@@ -1,0 +1,11 @@
+﻿fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy
+pymysql
+alembic
+httpx
+python-dotenv
+pytest
+pytest-asyncio
