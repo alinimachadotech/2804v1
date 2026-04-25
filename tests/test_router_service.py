@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.router_service import get_router_secret_by_router_id
 
 
 client = TestClient(app)
@@ -45,3 +46,18 @@ def test_get_router_not_found():
     response = client.get("/api/v1/routers/999999")
 
     assert response.status_code == 404
+
+
+def test_get_router_secret_by_id_not_found():
+    """Testa busca de router com credenciais - não encontrado."""
+    result = get_router_secret_by_router_id(999)
+    assert result is None
+
+
+def test_get_router_secret_by_id_invalid():
+    """Testa busca com ID inválido."""
+    result = get_router_secret_by_router_id(-1)
+    assert result is None
+    
+    result = get_router_secret_by_router_id(0)
+    assert result is None

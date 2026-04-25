@@ -59,3 +59,22 @@ def get_router_by_slug(router_slug: str) -> RouterOut | None:
             return router
 
     return None
+
+
+def get_router_secret_by_router_id(router_id: int):
+    """Busca configuração interna de um router com token/key.
+    
+    IMPORTANTE: Essa função retorna credenciais. Nunca usar em respostas públicas!
+    
+    Args:
+        router_id: ID do router (1-based index)
+        
+    Returns:
+        RouterSettings com token/key, ou None se não encontrado
+    """
+    routers = settings.routers
+    
+    if router_id < 1 or router_id > len(routers):
+        return None
+    
+    return routers[router_id - 1]
