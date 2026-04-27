@@ -9,12 +9,17 @@ from app.integrations.nextrouter.exceptions import (
     NextRouterRateLimitError,
     NextRouterTimeoutError,
 )
-from app.services.online_calls_service import get_online_aggregate_by_router_id
+from app.schemas.online_calls import OnlineAggregateAllRoutersOut
+from app.services.online_calls_service import (
+    get_online_aggregate_all_routers,
+    get_online_aggregate_by_router_id,
+)
 
-router = APIRouter(prefix="/api/v1/routers", tags=["Online Calls"])
+# Router para endpoints /api/v1/routers/{router_id}/online-aggregate
+routers_router = APIRouter(prefix="/api/v1/routers", tags=["Online Calls"])
 
 
-@router.get("/{router_id}/online-aggregate")
+@routers_router.get("/{router_id}/online-aggregate")
 def get_online_aggregate(router_id: int):
     """Busca agregação de chamadas online de um router.
     
@@ -62,3 +67,23 @@ def get_online_aggregate(router_id: int):
             status_code=502,
             detail=f"Erro ao comunicar com NextRouter: {exc}"
         )
+
+
+# Router para endpoints /api/v1/online/...
+online_router = APIRouter(prefix="/api/v1/online", tags=["Online Calls"])
+
+
+@online_router.get("/aggregate/all-routers", response_model=OnlineAggregateAllRoutersOut)
+def get_online_aggregate_all():
+    """Busca agregação de chamadas online de todos os routers.
+    
+    Se um router falhar, continua com os outros e registra a falha.
+    
+    Returns:
+        OnlineAggregateAllRoutersOut com dados consolidados
+    """
+    return get_online_aggregate_all_routers()
+
+
+# Compatibilidade: usar ambos os routers
+router = routers_router

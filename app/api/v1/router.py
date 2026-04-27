@@ -6,4 +6,5 @@ api_router = APIRouter()
 
 api_router.include_router(health.router)
 api_router.include_router(routers.router)
-api_router.include_router(online_calls.router)
+api_router.include_router(online_calls.routers_router)
+api_router.include_router(online_calls.online_router)
