@@ -19,6 +19,7 @@ from app.services.online_calls_service import (
     get_online_aggregate_all_routers,
     get_online_aggregate_by_router_id,
 )
+from app.services.online_snapshot_service import save_online_snapshot
 
 # Router para endpoints /api/v1/routers/{router_id}/online-aggregate
 routers_router = APIRouter(prefix="/api/v1/routers", tags=["Online Calls"])
@@ -84,6 +85,7 @@ def get_online_aggregate_all():
     
     Usa cache Redis com TTL mínimo de 60 segundos.
     Se um router falhar, continua com os outros e registra a falha.
+    Persiste snapshots em MariaDB apenas em coletas reais (não cache).
     
     Returns:
         OnlineAggregateAllRoutersOut com dados consolidados
@@ -91,7 +93,7 @@ def get_online_aggregate_all():
     # Tenta obter do cache primeiro
     cached_data = get_cached_online_aggregate_all()
     if cached_data:
-        # Cache válido: atualiza métricas e retorna
+        # Cache válido: atualiza métricas e retorna (sem salvar snapshot)
         update_online_metrics(cached_data.model_dump())
         return cached_data
     
@@ -103,6 +105,9 @@ def get_online_aggregate_all():
     
     # Atualiza métricas
     update_online_metrics(result.model_dump())
+    
+    # Persiste snapshot em MariaDB (apenas em coleta real, não cache)
+    save_online_snapshot(result)
     
     return result
 
