@@ -1,6 +1,4 @@
-﻿# Gerax Manager API
-
-API FastAPI para centralizar operações técnicas e operacionais relacionadas a múltiplos routers NextRouter C4 SoftSwitch.
+﻿API FastAPI para centralizar operações técnicas e operacionais relacionadas a múltiplos routers NextRouter C4 SoftSwitch.
 
 O objetivo do projeto é evoluir para uma base modular, segura e observável, com persistência em MariaDB, métricas para Prometheus, dashboards no Grafana e contratos de API preparados para um frontend futuro.
 
