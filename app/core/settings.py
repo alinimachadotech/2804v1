@@ -34,6 +34,12 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
+    redis_host: str = "127.0.0.1"
+    redis_port: int = 6379
+    redis_db: int = 0
+    online_cache_ttl_seconds: int = 60
+    router_request_timeout_seconds: int = 60
+
     @cached_property
     def routers(self) -> list[RouterSettings]:
         try:

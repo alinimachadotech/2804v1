@@ -11,6 +11,7 @@ from app.services.router_service import (
     get_router_secret_by_router_id,
     list_routers,
 )
+from app.core.settings import settings
 
 
 logger = logging.getLogger(__name__)
@@ -195,7 +196,8 @@ def get_online_aggregate_by_router_id(router_id: int) -> dict:
         raise ValueError(f"Router {router_id} não encontrado")
     
     client = NextRouterClient(
-        base_url=f"https://{router_config.ip}"
+        base_url=f"https://{router_config.ip}",
+        timeout=settings.router_request_timeout_seconds,
     )
     
     token = router_config.token.get_secret_value()

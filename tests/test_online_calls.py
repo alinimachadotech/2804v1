@@ -1,5 +1,6 @@
 """Testes para endpoints de chamadas online."""
 
+import pytest
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -13,6 +14,14 @@ from app.services.online_calls_service import (
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def mock_cache_functions():
+    """Mock das funções de cache para que testes não dependam de Redis."""
+    with patch("app.api.v1.endpoints.online_calls.get_cached_online_aggregate_all", return_value=None), \
+         patch("app.api.v1.endpoints.online_calls.set_cached_online_aggregate_all", return_value=True):
+        yield
 
 
 # ============= Testes para endpoint single router =============

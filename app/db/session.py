@@ -30,7 +30,19 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-def ping_database() -> bool:
-    with engine.connect() as connection:
-        connection.execute(text("SELECT 1"))
-    return True
+def ping_database() -> tuple[bool, str]:
+    """Valida conexão com o banco.
+
+    Retorna:
+        (True, "ok") quando o banco responde.
+        (False, "error") quando há falha.
+
+    Não retorna detalhes internos da exceção para evitar vazamento de
+    usuário, host, senha, string de conexão ou informações sensíveis.
+    """
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return True, "ok"
+    except Exception:
+        return False, "error"
