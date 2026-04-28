@@ -11,7 +11,13 @@ from app.db.base import Base
 from app.db.session import engine
 
 # Importar os models registra as tabelas no metadata do SQLAlchemy.
-from app.models import OnlineRouterSnapshot, Router, SyncRun  # noqa: F401
+from app.models import (  # noqa: F401
+    OnlineSnapshot,
+    OnlineRouterSnapshot,
+    OnlineTopClientsSnapshot,
+    OnlineTopRoutesSnapshot,
+    Router,
+)
 
 
 def main() -> None:
