@@ -1,18 +1,32 @@
-﻿__pycache__/
+﻿# Ambiente local
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 
-.venv/
-venv/
+# Backups locais
+backups/
+*.bak
+*.bak-*
+*.backup
 
-.env
-*.env
-!.env.example
-
-.vscode/
-
+# Logs
 *.log
 logs/
 
+# Sistema/IDE
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db
+
+# Docker/local
+docker-data/

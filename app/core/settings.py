@@ -1,5 +1,6 @@
-import json
+﻿import json
 from functools import cached_property
+from urllib.parse import quote_plus
 
 from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,12 @@ class Settings(BaseSettings):
 
     routers_json: str = Field(default="[]", repr=False)
 
+    mariadb_host: str = "127.0.0.1"
+    mariadb_port: int = 3317
+    mariadb_user: str = "gerax"
+    mariadb_password: SecretStr = Field(default=SecretStr("change-me-local-password"), repr=False)
+    mariadb_database: str = "gerax_manager"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -32,7 +39,7 @@ class Settings(BaseSettings):
         try:
             raw_routers = json.loads(self.routers_json)
         except json.JSONDecodeError as exc:
-            raise ValueError("ROUTERS_JSON inválido no .env") from exc
+            raise ValueError("ROUTERS_JSON invÃ¡lido no .env") from exc
 
         routers: list[RouterSettings] = []
 
@@ -50,6 +57,15 @@ class Settings(BaseSettings):
             routers.append(RouterSettings(**item))
 
         return routers
+
+    @property
+    def database_url(self) -> str:
+        password = quote_plus(self.mariadb_password.get_secret_value())
+        return (
+            f"mysql+pymysql://{self.mariadb_user}:{password}"
+            f"@{self.mariadb_host}:{self.mariadb_port}/{self.mariadb_database}"
+            "?charset=utf8mb4"
+        )
 
 
 settings = Settings()
