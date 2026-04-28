@@ -30,3 +30,5 @@ Thumbs.db
 
 # Docker/local
 docker-data/
+
+aplicar_*.ps1
