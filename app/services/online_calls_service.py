@@ -2,19 +2,63 @@
 
 import logging
 from collections import defaultdict
+import hashlib
+import json
+import re
+from typing import Any
 
+from app.core.cache import redis_get_json, redis_set_json
+from app.core.settings import settings
 from app.integrations.nextrouter.client import NextRouterClient
 from app.integrations.nextrouter.exceptions import NextRouterError
 from app.schemas.online_calls import OnlineAggregateAllRoutersOut
+from app.services.audit_service import sanitize_payload
+from app.services.balance_service import RouterNotFoundError
 from app.services.router_service import (
-    get_router_by_id,
     get_router_secret_by_router_id,
+    get_router_secret_by_name,
     list_routers,
 )
-from app.core.settings import settings
 
 
 logger = logging.getLogger(__name__)
+
+
+def _cache_part(value: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_.:-]+", "_", str(value).strip().lower())
+
+
+def _online_calls_cache_key(
+    router_name: str,
+    id_rota: Any | None,
+    summary: bool,
+    id_record: Any | None,
+) -> str:
+    fingerprint = json.dumps(
+        {
+            "id_rota": id_rota,
+            "summary": summary,
+            "id_record": id_record,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    digest = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:24]
+    return f"gerax:readonly:online-calls:{_cache_part(router_name)}:{digest}"
+
+
+def _build_client() -> NextRouterClient:
+    return NextRouterClient(
+        timeout=settings.nextrouter_timeout_seconds,
+        verify_ssl=settings.nextrouter_verify_ssl,
+    )
+
+
+def _get_router_or_raise(router_name: str):
+    router = get_router_secret_by_name(router_name)
+    if router is None:
+        raise RouterNotFoundError("Router nao encontrado")
+    return router
 
 
 def to_int(value) -> int:
@@ -177,6 +221,55 @@ def normalize_server_item(item: dict, router) -> dict:
     }
 
 
+def get_online_calls_by_router(
+    router_name: str,
+    *,
+    id_rota: Any | None = None,
+    summary: bool = False,
+    id_record: Any | None = None,
+    use_cache: bool = True,
+) -> dict:
+    """Consulta chamadas online de um router usando apenas GET."""
+    router = _get_router_or_raise(router_name)
+    key = _online_calls_cache_key(router.name, id_rota, summary, id_record)
+
+    if use_cache:
+        cached = redis_get_json(key)
+        if cached and "data" in cached:
+            return {
+                "router_name": router.name,
+                "id_rota": id_rota,
+                "summary": summary,
+                "id_record": id_record,
+                "data": cached["data"],
+                "cached": True,
+            }
+
+    data = sanitize_payload(
+        _build_client().get_online_calls(
+            router,
+            id_rota=id_rota,
+            summary=summary,
+            id_record=id_record,
+        )
+    )
+
+    redis_set_json(
+        key,
+        {"data": data},
+        ttl_seconds=max(settings.online_cache_ttl_seconds, 1),
+    )
+
+    return {
+        "router_name": router.name,
+        "id_rota": id_rota,
+        "summary": summary,
+        "id_record": id_record,
+        "data": data,
+        "cached": False,
+    }
+
+
 def get_online_aggregate_by_router_id(router_id: int) -> dict:
     """Busca agregação de chamadas online de um router.
     
@@ -195,16 +288,7 @@ def get_online_aggregate_by_router_id(router_id: int) -> dict:
     if not router_config:
         raise ValueError(f"Router {router_id} não encontrado")
     
-    client = NextRouterClient(
-        base_url=f"https://{router_config.ip}",
-        timeout=settings.nextrouter_timeout_seconds,
-        verify_ssl=settings.nextrouter_verify_ssl,
-    )
-    
-    token = router_config.token.get_secret_value()
-    key = router_config.key.get_secret_value()
-    
-    return client.get_online_calls_aggregate(token, key)
+    return _build_client().get_online_calls_aggregate(router=router_config)
 
 
 def get_online_aggregate_all_routers() -> OnlineAggregateAllRoutersOut:

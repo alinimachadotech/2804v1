@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -12,14 +13,14 @@ from app.integrations.nextrouter.endpoints import (
     CDR,
     CDR_DISCONNECTION,
     CDR_SIPCODES,
+    CONTACTS,
+    CREDIT_HISTORY,
     GET_CUSTOMER_BALANCE,
-    MANAGE_CREDIT,
     MANAGE_CUSTOMERS,
     ONLINE_CALLS,
     ONLINE_CALLS_AGGREGATE,
     PROFIT_CUSTOMERS,
     PROFIT_GATEWAYS,
-    STATUS_CUSTOMER,
 )
 from app.integrations.nextrouter.exceptions import (
     NextRouterAuthError,
@@ -33,7 +34,6 @@ from app.integrations.nextrouter.exceptions import (
     NextRouterValidationError,
 )
 from app.integrations.nextrouter.parser import (
-    format_money,
     normalize_credit_history,
     normalize_customer,
     normalize_customer_balance,
@@ -155,6 +155,12 @@ class NextRouterClient:
         return f"{base_url}{endpoint}"
 
     @staticmethod
+    def _with_optional_id(endpoint_template: str, value: Any | None) -> str:
+        if value in (None, ""):
+            return endpoint_template
+        return f"{endpoint_template}/{quote(str(value).strip(), safe='')}"
+
+    @staticmethod
     def _clean_params(params: dict[str, Any] | None) -> dict[str, Any]:
         clean: dict[str, Any] = {}
         for key, value in (params or {}).items():
@@ -215,67 +221,42 @@ class NextRouterClient:
     def _pagination(start: int = 0, limit: int = 100) -> dict[str, int]:
         return {"start": max(start, 0), "limit": max(limit, 1)}
 
-    def get_customer_balance(self, router: Any, customer_id: Any) -> dict[str, Any]:
+    def get_customer_balance(
+        self,
+        router: Any,
+        customer_id: Any | None = None,
+    ) -> dict[str, Any]:
+        endpoint = self._with_optional_id(GET_CUSTOMER_BALANCE, customer_id)
         payload = self._request(
-            GET_CUSTOMER_BALANCE,
+            endpoint,
             router=router,
-            params={"id_cliente": customer_id},
         )
         return normalize_customer_balance(payload, customer_id=customer_id)
 
-    def get_customer(self, router: Any, customer_id: Any) -> dict[str, Any]:
+    def get_customer(self, router: Any, customer_id: Any | None = None) -> dict[str, Any]:
+        endpoint = self._with_optional_id(MANAGE_CUSTOMERS, customer_id)
         payload = self._request(
-            MANAGE_CUSTOMERS,
+            endpoint,
             router=router,
-            params={"id_cliente": customer_id},
         )
         return normalize_customer(payload)
-
-    def set_customer_status(self, router: Any, customer_id: Any, status: Any) -> Any:
-        return self._request(
-            STATUS_CUSTOMER,
-            router=router,
-            params={"id_cliente": customer_id, "status": status},
-        )
-
-    def manage_credit(
-        self,
-        router: Any,
-        customer_id: Any,
-        amount: Any,
-        operation: str,
-        reason: str,
-        is_hidden: int = 0,
-    ) -> Any:
-        return self._request(
-            MANAGE_CREDIT,
-            router=router,
-            params={
-                "id_cliente": customer_id,
-                "valor": format_money(amount),
-                "operacao": operation,
-                "motivo": reason,
-                "is_hidden": is_hidden,
-            },
-        )
 
     def get_credit_history(
         self,
         router: Any,
-        customer_id: Any,
-        date_ini: Any,
-        date_end: Any,
+        customer_id: Any | None = None,
+        date_ini: Any | None = None,
+        date_end: Any | None = None,
         start: int = 0,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         params = {
-            "id_cliente": customer_id,
             "date_ini": date_ini,
             "date_end": date_end,
-            "action": "history",
             **self._pagination(start, limit),
         }
-        payload = self._request(MANAGE_CREDIT, router=router, params=params)
+        endpoint = self._with_optional_id(CREDIT_HISTORY, customer_id)
+        payload = self._request(endpoint, router=router, params=params)
         return normalize_credit_history(payload)
 
     def get_online_calls(
@@ -289,13 +270,6 @@ class NextRouterClient:
             ONLINE_CALLS,
             router=router,
             params={"id_rota": id_rota, "summary": summary, "id_record": id_record},
-        )
-
-    def delete_online_call(self, router: Any, call_id: Any) -> Any:
-        return self._request(
-            ONLINE_CALLS,
-            router=router,
-            params={"id_record": call_id, "delete": 1},
         )
 
     def get_online_calls_aggregate(
@@ -319,8 +293,9 @@ class NextRouterClient:
         limit: int = 100,
         **filters: Any,
     ) -> list[dict[str, Any]]:
-        params = {"id_cliente": customer_id, **filters, **self._pagination(start, limit)}
-        payload = self._request(CDR, router=router, params=params)
+        endpoint = self._with_optional_id(CDR, customer_id)
+        params = {**filters, **self._pagination(start, limit)}
+        payload = self._request(endpoint, router=router, params=params)
         return normalize_money_collection(payload)
 
     def get_cdr_disconnection(
@@ -331,8 +306,9 @@ class NextRouterClient:
         limit: int = 100,
         **filters: Any,
     ) -> list[dict[str, Any]]:
-        params = {"id_cliente": customer_id, **filters, **self._pagination(start, limit)}
-        payload = self._request(CDR_DISCONNECTION, router=router, params=params)
+        endpoint = self._with_optional_id(CDR_DISCONNECTION, customer_id)
+        params = {**filters, **self._pagination(start, limit)}
+        payload = self._request(endpoint, router=router, params=params)
         return normalize_money_collection(payload)
 
     def get_cdr_sipcodes(
@@ -343,28 +319,46 @@ class NextRouterClient:
         limit: int = 100,
         **filters: Any,
     ) -> Any:
-        params = {"id_cliente": customer_id, **filters, **self._pagination(start, limit)}
-        payload = self._request(CDR_SIPCODES, router=router, params=params)
+        endpoint = self._with_optional_id(CDR_SIPCODES, customer_id)
+        params = {**filters, **self._pagination(start, limit)}
+        payload = self._request(endpoint, router=router, params=params)
         return normalize_passthrough(payload)
 
     def get_profit_customers(
         self,
         router: Any,
+        customer_id: Any | None = None,
         start: int = 0,
         limit: int = 100,
         **filters: Any,
     ) -> list[dict[str, Any]]:
+        endpoint = self._with_optional_id(PROFIT_CUSTOMERS, customer_id)
         params = {**filters, **self._pagination(start, limit)}
-        payload = self._request(PROFIT_CUSTOMERS, router=router, params=params)
+        payload = self._request(endpoint, router=router, params=params)
         return normalize_money_collection(payload)
 
     def get_profit_gateways(
         self,
         router: Any,
+        customer_id: Any | None = None,
         start: int = 0,
         limit: int = 100,
         **filters: Any,
     ) -> list[dict[str, Any]]:
+        endpoint = self._with_optional_id(PROFIT_GATEWAYS, customer_id)
         params = {**filters, **self._pagination(start, limit)}
-        payload = self._request(PROFIT_GATEWAYS, router=router, params=params)
+        payload = self._request(endpoint, router=router, params=params)
+        return normalize_money_collection(payload)
+
+    def get_contacts(
+        self,
+        router: Any,
+        customer_id: Any | None = None,
+        start: int = 0,
+        limit: int = 100,
+        **filters: Any,
+    ) -> list[dict[str, Any]]:
+        endpoint = self._with_optional_id(CONTACTS, customer_id)
+        params = {**filters, **self._pagination(start, limit)}
+        payload = self._request(endpoint, router=router, params=params)
         return normalize_money_collection(payload)

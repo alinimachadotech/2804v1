@@ -1,7 +1,8 @@
-"""Endpoints para gerenciar chamadas online."""
+"""Endpoints read-only para chamadas online."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
+from app.api.v1.errors import handle_service_error
 from app.core.online_metrics import update_online_metrics
 from app.integrations.nextrouter.exceptions import (
     NextRouterAuthError,
@@ -18,99 +19,93 @@ from app.services.online_cache_service import (
 from app.services.online_calls_service import (
     get_online_aggregate_all_routers,
     get_online_aggregate_by_router_id,
+    get_online_calls_by_router,
 )
 from app.services.online_snapshot_service import save_online_snapshot
 
-# Router para endpoints /api/v1/routers/{router_id}/online-aggregate
+
 routers_router = APIRouter(prefix="/api/v1/routers", tags=["Online Calls"])
 
 
 @routers_router.get("/{router_id}/online-aggregate")
 def get_online_aggregate(router_id: int):
-    """Busca agregação de chamadas online de um router.
-    
-    Args:
-        router_id: ID do router (1-based)
-        
-    Returns:
-        Dados de agregação de chamadas online em JSON
-        
-    Raises:
-        HTTPException: Erros de comunicação ou validação
-    """
     try:
         return get_online_aggregate_by_router_id(router_id)
-    
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    
     except NextRouterAuthError:
         raise HTTPException(
-            status_code=401,
-            detail="Falha na autenticação com o NextRouter (credenciais inválidas)"
+            status_code=403,
+            detail="Falha na autenticacao com NextRouter",
         )
-    
     except NextRouterNotFoundError:
-        raise HTTPException(
-            status_code=404,
-            detail="Recurso não encontrado no NextRouter"
-        )
-    
+        raise HTTPException(status_code=404, detail="Recurso nao encontrado no NextRouter")
     except NextRouterRateLimitError:
-        raise HTTPException(
-            status_code=429,
-            detail="Taxa de requisições para NextRouter excedida"
-        )
-    
+        raise HTTPException(status_code=429, detail="Rate limit do NextRouter excedido")
     except NextRouterTimeoutError:
-        raise HTTPException(
-            status_code=504,
-            detail="Timeout ao comunicar com NextRouter"
-        )
-    
-    except NextRouterError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Erro ao comunicar com NextRouter: {exc}"
-        )
+        raise HTTPException(status_code=504, detail="Timeout ao comunicar com NextRouter")
+    except NextRouterError:
+        raise HTTPException(status_code=502, detail="Erro ao comunicar com NextRouter")
 
 
-# Router para endpoints /api/v1/online/...
 online_router = APIRouter(prefix="/api/v1/online", tags=["Online Calls"])
+noc_router = APIRouter(prefix="/api/v1/noc/online", tags=["NOC"])
+
+
+def _get_or_collect_online_aggregate_all() -> OnlineAggregateAllRoutersOut:
+    cached_data = get_cached_online_aggregate_all()
+    if cached_data:
+        update_online_metrics(cached_data.model_dump())
+        return cached_data
+
+    result = get_online_aggregate_all_routers()
+    set_cached_online_aggregate_all(result)
+    update_online_metrics(result.model_dump())
+    save_online_snapshot(result)
+    return result
 
 
 @online_router.get("/aggregate/all-routers", response_model=OnlineAggregateAllRoutersOut)
 def get_online_aggregate_all():
-    """Busca agregação de chamadas online de todos os routers.
-    
-    Usa cache Redis com TTL mínimo de 60 segundos.
-    Se um router falhar, continua com os outros e registra a falha.
-    Persiste snapshots em MariaDB apenas em coletas reais (não cache).
-    
-    Returns:
-        OnlineAggregateAllRoutersOut com dados consolidados
-    """
-    # Tenta obter do cache primeiro
-    cached_data = get_cached_online_aggregate_all()
-    if cached_data:
-        # Cache válido: atualiza métricas e retorna (sem salvar snapshot)
-        update_online_metrics(cached_data.model_dump())
-        return cached_data
-    
-    # Sem cache válido: consulta os routers
-    result = get_online_aggregate_all_routers()
-    
-    # Salva no cache
-    set_cached_online_aggregate_all(result)
-    
-    # Atualiza métricas
-    update_online_metrics(result.model_dump())
-    
-    # Persiste snapshot em MariaDB (apenas em coleta real, não cache)
-    save_online_snapshot(result)
-    
-    return result
+    return _get_or_collect_online_aggregate_all()
 
 
-# Compatibilidade: usar ambos os routers
+@noc_router.get("/calls")
+def read_online_calls(
+    router_name: str = Query(..., min_length=1),
+    id_rota: str | None = None,
+    summary: bool = False,
+    id_record: str | None = None,
+):
+    try:
+        return get_online_calls_by_router(
+            router_name,
+            id_rota=id_rota,
+            summary=summary,
+            id_record=id_record,
+        )
+    except Exception as exc:
+        handle_service_error(exc)
+
+
+@noc_router.get("/aggregate", response_model=OnlineAggregateAllRoutersOut)
+def read_noc_online_aggregate():
+    return _get_or_collect_online_aggregate_all()
+
+
+@noc_router.get("/routes")
+def read_noc_online_routes():
+    return _get_or_collect_online_aggregate_all().routes
+
+
+@noc_router.get("/clients")
+def read_noc_online_clients():
+    return _get_or_collect_online_aggregate_all().top_clients
+
+
+@noc_router.get("/servers")
+def read_noc_online_servers():
+    return _get_or_collect_online_aggregate_all().servers
+
+
 router = routers_router

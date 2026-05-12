@@ -57,7 +57,7 @@ def test_get_online_aggregate_auth_error(mock_get_online):
     
     response = client.get("/api/v1/routers/1/online-aggregate")
     
-    assert response.status_code == 401
+    assert response.status_code == 403
 
 
 @patch("app.api.v1.endpoints.online_calls.get_online_aggregate_by_router_id")

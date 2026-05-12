@@ -1,4 +1,4 @@
-"""Business service para cadastro e status de clientes."""
+"""Business service read-only para cadastro de clientes."""
 
 from __future__ import annotations
 
@@ -8,21 +8,10 @@ from typing import Any
 from app.core.cache import redis_get_json, redis_set_json
 from app.core.settings import settings
 from app.integrations.nextrouter.client import NextRouterClient
-from app.schemas.customer import (
-    CustomerDeactivateImpactOut,
-    CustomerOut,
-    CustomerStatusChangeOut,
-)
-from app.services.audit_service import record_audit_action, sanitize_payload
-from app.services.balance_service import (
-    RouterNotFoundError,
-    get_customer_balance,
-)
+from app.schemas.customer import CustomerOut
+from app.services.audit_service import sanitize_payload
+from app.services.balance_service import RouterNotFoundError
 from app.services.router_service import get_router_secret_by_name
-
-
-ACTIVE_STATUS = 1
-INACTIVE_STATUS = 0
 
 
 def _cache_part(value: str) -> str:
@@ -111,113 +100,3 @@ def get_customer(
     )
 
     return result
-
-
-def get_deactivation_impact(router_name: str, customer_id: str) -> CustomerDeactivateImpactOut:
-    """Calcula impacto esperado antes de desativar um cliente."""
-    customer = get_customer(router_name, customer_id, use_cache=False)
-
-    current_balance = None
-    try:
-        current_balance = get_customer_balance(
-            router_name,
-            customer_id,
-            use_cache=False,
-        ).balance
-    except Exception:
-        current_balance = None
-
-    return CustomerDeactivateImpactOut(
-        router_name=customer.router_name,
-        customer_id=customer.customer_id,
-        current_status=customer.status,
-        current_balance=current_balance,
-    )
-
-
-def activate_customer(
-    router_name: str,
-    customer_id: str,
-    *,
-    db=None,
-) -> CustomerStatusChangeOut:
-    """Ativa um cliente via statusCustomer."""
-    customer_id = str(customer_id)
-    router = _get_router_or_raise(router_name)
-    before = get_customer(router.name, customer_id, use_cache=False)
-    result = sanitize_payload(
-        _build_client().set_customer_status(router, customer_id, ACTIVE_STATUS)
-    )
-
-    audit_recorded = record_audit_action(
-        action="customer.activate",
-        router_name=router.name,
-        customer_id=customer_id,
-        before=before.model_dump(mode="json"),
-        after={"status": ACTIVE_STATUS, "result": result},
-        db=db,
-    )
-
-    return CustomerStatusChangeOut(
-        router_name=router.name,
-        customer_id=customer_id,
-        action="activate",
-        requested_status=ACTIVE_STATUS,
-        previous_status=before.status,
-        action_executed=True,
-        message="Cliente ativado",
-        audit_recorded=audit_recorded,
-        result=result if isinstance(result, dict) else {"response": result},
-    )
-
-
-def deactivate_customer(
-    router_name: str,
-    customer_id: str,
-    *,
-    confirm: bool = False,
-    db=None,
-) -> CustomerStatusChangeOut:
-    """Desativa um cliente somente quando confirm=True."""
-    customer_id = str(customer_id)
-    router = _get_router_or_raise(router_name)
-    impact = get_deactivation_impact(router.name, customer_id)
-
-    if not confirm:
-        return CustomerStatusChangeOut(
-            router_name=router.name,
-            customer_id=customer_id,
-            action="deactivate",
-            requested_status=INACTIVE_STATUS,
-            previous_status=impact.current_status,
-            action_executed=False,
-            message="Acao nao executada. Reenvie com confirm=true para desativar.",
-            impact=impact,
-            audit_recorded=False,
-        )
-
-    result = sanitize_payload(
-        _build_client().set_customer_status(router, customer_id, INACTIVE_STATUS)
-    )
-
-    audit_recorded = record_audit_action(
-        action="customer.deactivate",
-        router_name=router.name,
-        customer_id=customer_id,
-        before=impact.model_dump(mode="json"),
-        after={"status": INACTIVE_STATUS, "result": result},
-        db=db,
-    )
-
-    return CustomerStatusChangeOut(
-        router_name=router.name,
-        customer_id=customer_id,
-        action="deactivate",
-        requested_status=INACTIVE_STATUS,
-        previous_status=impact.current_status,
-        action_executed=True,
-        message="Cliente desativado",
-        impact=impact,
-        audit_recorded=audit_recorded,
-        result=result if isinstance(result, dict) else {"response": result},
-    )

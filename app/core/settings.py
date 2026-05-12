@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     balance_cache_ttl_seconds: int = 60
     customer_cache_ttl_seconds: int = 60
     online_cache_ttl_seconds: int = 60
+    read_only_cache_ttl_seconds: int = 60
     router_request_timeout_seconds: int = 60
 
     @field_validator("debug", mode="before")

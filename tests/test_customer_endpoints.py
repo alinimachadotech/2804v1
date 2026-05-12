@@ -1,15 +1,14 @@
 """Testes dos endpoints de clientes."""
 
 from decimal import Decimal
-from unittest.mock import ANY, patch
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.schemas.balance import CustomerBalanceOut
-from app.schemas.customer import CustomerStatusChangeOut
-from app.schemas.financial import CreditHistoryOut, FinancialOperationOut
-from app.services.financial_service import InsufficientBalanceError
+from app.schemas.customer import CustomerOut
+from app.schemas.financial import CreditHistoryOut
 
 
 client = TestClient(app)
@@ -38,56 +37,25 @@ def test_get_customer_balance_endpoint(mock_get_balance):
     assert "password" not in serialized
 
 
-@patch("app.api.v1.endpoints.customers.deactivate_customer")
-def test_deactivate_endpoint_passes_confirm_false(mock_deactivate):
-    mock_deactivate.return_value = CustomerStatusChangeOut(
+@patch("app.api.v1.endpoints.customers.get_customer")
+def test_get_customer_endpoint(mock_get_customer):
+    mock_get_customer.return_value = CustomerOut(
         router_name="Router Test",
         customer_id="customer-1",
-        action="deactivate",
-        requested_status=0,
-        previous_status=1,
-        action_executed=False,
-        message="Acao nao executada. Reenvie com confirm=true para desativar.",
+        name="Cliente Teste",
+        status=1,
+        is_active=True,
+        data={"id_cliente": "customer-1"},
     )
 
-    response = client.post(
-        "/api/v1/customers/customer-1/deactivate",
+    response = client.get(
+        "/api/v1/customers/customer-1",
         params={"router_name": "Router Test"},
     )
 
     assert response.status_code == 200
-    assert response.json()["action_executed"] is False
-    mock_deactivate.assert_called_once_with(
-        "Router Test",
-        "customer-1",
-        confirm=False,
-        db=ANY,
-    )
-
-
-@patch("app.api.v1.endpoints.customers.credit_customer")
-def test_credit_endpoint_requires_reason_before_service(mock_credit):
-    response = client.post(
-        "/api/v1/customers/customer-1/credit",
-        params={"router_name": "Router Test"},
-        json={"amount": "10.00"},
-    )
-
-    assert response.status_code == 422
-    mock_credit.assert_not_called()
-
-
-@patch("app.api.v1.endpoints.customers.debit_customer")
-def test_debit_endpoint_maps_insufficient_balance(mock_debit):
-    mock_debit.side_effect = InsufficientBalanceError("Saldo insuficiente para debito")
-
-    response = client.post(
-        "/api/v1/customers/customer-1/debit",
-        params={"router_name": "Router Test"},
-        json={"amount": "10.00", "reason": "test debit"},
-    )
-
-    assert response.status_code == 400
+    assert response.json()["is_active"] is True
+    mock_get_customer.assert_called_once_with("Router Test", "customer-1")
 
 
 @patch("app.api.v1.endpoints.customers.get_credit_history")
@@ -124,25 +92,19 @@ def test_credit_history_endpoint_uses_router_name_and_pagination(mock_history):
     )
 
 
-@patch("app.api.v1.endpoints.customers.credit_customer")
-def test_credit_endpoint_success(mock_credit):
-    mock_credit.return_value = FinancialOperationOut(
-        router_name="Router Test",
-        customer_id="customer-1",
-        operation="credit",
-        amount=Decimal("10.00"),
-        reason="test credit",
-        balance_before=Decimal("1.00"),
-        balance_after=Decimal("11.00"),
-    )
-
-    response = client.post(
+def test_mutation_customer_endpoints_are_not_exposed():
+    blocked_paths = [
+        "/api/v1/customers/customer-1/activate",
+        "/api/v1/customers/customer-1/deactivate",
         "/api/v1/customers/customer-1/credit",
-        params={"router_name": "Router Test"},
-        json={"amount": "10.00", "reason": "test credit"},
-    )
+        "/api/v1/customers/customer-1/debit",
+        "/api/v1/customers/customer-1/set-balance",
+    ]
 
-    assert response.status_code == 200
-    data = response.json()
-    assert data["operation"] == "credit"
-    assert data["amount"] == "10.00"
+    for path in blocked_paths:
+        response = client.post(
+            path,
+            params={"router_name": "Router Test"},
+            json={"amount": "10.00", "reason": "blocked"},
+        )
+        assert response.status_code in {404, 405}

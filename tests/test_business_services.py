@@ -4,17 +4,9 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import pytest
-
-from app.schemas.balance import CustomerBalanceOut
-from app.schemas.customer import CustomerDeactivateImpactOut
 from app.services.audit_service import sanitize_payload
 from app.services.balance_service import get_customer_balance
-from app.services.customer_service import deactivate_customer
-from app.services.financial_service import (
-    InsufficientBalanceError,
-    debit_customer,
-)
+from app.services.customer_service import get_customer
 
 
 def fake_router():
@@ -74,48 +66,31 @@ def test_balance_service_returns_cached_decimal(
     mock_client_class.assert_not_called()
 
 
-@patch("app.services.customer_service.get_deactivation_impact")
+@patch("app.services.customer_service.redis_get_json")
+@patch("app.services.customer_service.redis_set_json")
 @patch("app.services.customer_service.get_router_secret_by_name")
 @patch("app.services.customer_service.NextRouterClient")
-def test_deactivate_customer_requires_confirm_before_status_change(
+def test_customer_service_is_read_only_and_uses_cache(
     mock_client_class,
     mock_get_router,
-    mock_impact,
+    mock_set_cache,
+    mock_get_cache,
 ):
+    mock_get_cache.return_value = None
     mock_get_router.return_value = fake_router()
-    mock_impact.return_value = CustomerDeactivateImpactOut(
-        router_name="Router Test",
-        customer_id="customer-1",
-        current_status=1,
-        current_balance=Decimal("10.00"),
-    )
+    mock_client_class.return_value.get_customer.return_value = {
+        "customer_id": "customer-1",
+        "name": "Cliente Teste",
+        "status": 1,
+        "raw": {"id_cliente": "customer-1"},
+    }
 
-    result = deactivate_customer("Router Test", "customer-1", confirm=False)
+    result = get_customer("Router Test", "customer-1")
 
-    assert result.action_executed is False
-    assert result.impact is not None
-    mock_client_class.assert_not_called()
-
-
-@patch("app.services.financial_service.get_customer_balance")
-@patch("app.services.financial_service.get_router_secret_by_name")
-@patch("app.services.financial_service.NextRouterClient")
-def test_debit_customer_validates_balance_before_calling_router(
-    mock_client_class,
-    mock_get_router,
-    mock_balance,
-):
-    mock_get_router.return_value = fake_router()
-    mock_balance.return_value = CustomerBalanceOut(
-        router_name="Router Test",
-        customer_id="customer-1",
-        balance=Decimal("5.00"),
-    )
-
-    with pytest.raises(InsufficientBalanceError):
-        debit_customer("Router Test", "customer-1", Decimal("10.00"), "test debit")
-
-    mock_client_class.assert_not_called()
+    assert result.customer_id == "customer-1"
+    assert result.is_active is True
+    mock_client_class.return_value.get_customer.assert_called_once()
+    mock_set_cache.assert_called_once()
 
 
 def test_sanitize_payload_removes_credentials_recursively():

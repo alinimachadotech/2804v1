@@ -35,6 +35,14 @@ def test_mask_url_nextrouter_style():
     assert "key456" not in result
 
 
+def test_mask_url_nextrouter_style_with_resource_id():
+    url = "https://router.example.test/api/getCustomerBalance/token123/key456/customer-1"
+    result = mask_url(url)
+    assert "/****/****/customer-1" in result
+    assert "token123" not in result
+    assert "key456" not in result
+
+
 def test_mask_url_no_credentials():
     """Testa masking de URLs sem credenciais."""
     url = "/api/health"

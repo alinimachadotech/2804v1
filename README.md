@@ -1,113 +1,78 @@
-﻿API FastAPI para centralizar operações técnicas e operacionais relacionadas a múltiplos routers NextRouter C4 SoftSwitch.
+# api-gerax / Gerax Hub
 
-O objetivo do projeto é evoluir para uma base modular, segura e observável, com persistência em MariaDB, métricas para Prometheus, dashboards no Grafana e contratos de API preparados para um frontend futuro.
+API FastAPI read-only para consultar multiplos routers NextRouter C4 SoftSwitch.
 
-> Projeto privado/proprietário. Não publique credenciais, tokens, IPs sensíveis ou arquivos `.env`.
+O projeto atua como uma camada segura de consulta, normalizacao, cache, historico e observabilidade para o Gerax Hub, entregando dados para frontend Vue, Prometheus, Grafana e rotinas internas de operacao.
 
----
+> Projeto privado/proprietario. Nao publique credenciais, tokens, IPs sensiveis ou arquivos `.env`.
 
-## Status atual
+## Escopo read-only
 
-Base local funcionando com:
+O api-gerax nao altera dados no NextRouter.
 
-- FastAPI
-- MariaDB
-- SQLAlchemy
-- Adminer
-- Prometheus
-- Grafana
-- Docker Compose para serviços de apoio
-- Rotas versionadas em `/api/v1`
-- Healthcheck e readiness com banco
-- Schema inicial no MariaDB
-
----
-
-## Estrutura do projeto
+Fora do escopo:
 
 ```text
-app/
-  api/
-  core/
-  db/
-  models/
-  routes/
-docker/
-  docker-compose.monitoring.yml
-  prometheus/
-  grafana/
-tests/
-tools/
-.env.example
-.gitignore
-README.md
-requirements.txt
+POST /api/statusCustomer
+POST /api/manageCredit
+DELETE /api/onlineCalls
 ```
 
----
+Nao criar endpoints internos para:
 
-## Requisitos locais
+```text
+ativar cliente
+desativar cliente
+creditar saldo
+debitar saldo
+definir saldo
+encerrar chamada
+```
 
-Ambiente principal de desenvolvimento:
+Todas as chamadas do `NextRouterClient` para o NextRouter devem usar `GET`. Tokens e keys ficam somente no backend e devem ser mascarados em logs.
 
-- Windows
-- PowerShell
-- VS Code
-- Docker Desktop
-- Python
-- Git
+## Stack
 
-Validar Docker:
+- FastAPI
+- Pydantic
+- SQLAlchemy
+- MariaDB
+- Redis cache
+- Prometheus metrics
+- Grafana
+- pytest
+
+## Configuracao local
+
+Crie o ambiente virtual:
 
 ```powershell
-docker ps
+python -m venv .venv
 ```
 
-Se o Docker estiver funcionando, o comando deve listar containers ou retornar uma tabela vazia sem erro.
+Instale dependencias:
 
----
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
 
-## Configuração do ambiente
-
-Copie o arquivo de exemplo:
+Copie o exemplo de ambiente:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Edite o `.env` local:
+Edite somente o `.env` local. Nunca versionar `.env`.
+
+## Servicos de apoio
+
+Subir MariaDB, Adminer, Prometheus e Grafana:
 
 ```powershell
-notepad .env
-```
-
-Nunca publique o arquivo `.env`.
-
-O arquivo versionado correto é apenas:
-
-```text
-.env.example
-```
-
----
-
-## Subir MariaDB, Adminer, Prometheus e Grafana
-
-Na raiz do projeto:
-
-```powershell
-cd C:\dev\gerax_manager
-
 docker compose --env-file .\.env -f .\docker\docker-compose.monitoring.yml up -d
 ```
 
-Verificar containers:
-
-```powershell
-docker compose --env-file .\.env -f .\docker\docker-compose.monitoring.yml ps
-```
-
-Serviços locais esperados:
+Servicos locais esperados:
 
 ```text
 MariaDB     localhost:3317
@@ -116,110 +81,127 @@ Prometheus  http://localhost:9090
 Grafana     http://localhost:3180
 ```
 
-A porta `3317` é do banco MariaDB. Ela não deve ser aberta no navegador.
-
----
-
-## Rodar a API localmente
-
-Criar ambiente virtual:
-
-```powershell
-python -m venv .venv
-```
-
-Instalar dependências sem precisar ativar o ambiente:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-Rodar a API:
+## Rodar API
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-A API ficará disponível em:
+URLs:
 
 ```text
-http://127.0.0.1:8000
+API          http://127.0.0.1:8000
+Swagger      http://127.0.0.1:8000/docs
+Metrics      http://127.0.0.1:8000/metrics
 ```
-
-Swagger/OpenAPI:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
----
 
 ## Endpoints principais
 
-Rotas básicas:
+Saude:
 
 ```text
 GET /
 GET /ping
 GET /health
-```
-
-Rotas versionadas:
-
-```text
 GET /api/v1/health
 GET /api/v1/ready
-```
-
-Métricas Prometheus:
-
-```text
 GET /metrics
 ```
 
----
+Clientes:
 
-## Testes rápidos
-
-API:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/
-Invoke-RestMethod http://127.0.0.1:8000/ping
-Invoke-RestMethod http://127.0.0.1:8000/api/v1/health
-Invoke-RestMethod http://127.0.0.1:8000/api/v1/ready
+```text
+GET /api/v1/customers/{customer_id}
+GET /api/v1/customers/{customer_id}/balance
+GET /api/v1/customers/{customer_id}/credit-history
 ```
 
-Métricas:
+NOC:
 
-```powershell
-Invoke-WebRequest http://127.0.0.1:8000/metrics
+```text
+GET /api/v1/noc/online/calls
+GET /api/v1/noc/online/aggregate
+GET /api/v1/noc/online/routes
+GET /api/v1/noc/online/clients
+GET /api/v1/noc/online/servers
 ```
 
-Testes automatizados:
+Relatorios:
+
+```text
+GET /api/v1/reports/cdr
+GET /api/v1/reports/cdr-disconnections
+GET /api/v1/reports/sip-codes
+GET /api/v1/reports/profit/customers
+GET /api/v1/reports/profit/gateways
+```
+
+Contacts:
+
+```text
+GET /api/v1/contacts
+```
+
+## Consultas NextRouter permitidas
+
+O `NextRouterClient` deve manter apenas:
+
+```text
+get_customer_balance
+get_customer
+get_credit_history
+get_online_calls
+get_online_calls_aggregate
+get_cdr
+get_cdr_disconnection
+get_cdr_sipcodes
+get_profit_customers
+get_profit_gateways
+get_contacts
+```
+
+## Seguranca
+
+Regras obrigatorias:
+
+- Nunca versionar `.env`.
+- Nunca publicar tokens, keys, senhas ou IPs sensiveis reais.
+- Nunca colocar token/key do NextRouter no frontend.
+- Nunca colocar token/key do NextRouter no Grafana.
+- Nunca logar URL completa contendo credenciais.
+- Usar `.env.example` apenas com valores ficticios.
+- Mascarar segredos em logs.
+- Usar `Decimal` para dinheiro.
+- Usar paginacao `start` e `limit`.
+- Tratar erros 400, 403, 404, 413, 422, 429 e 5xx da integracao NextRouter.
+- Nao usar `verify=False` fixo em producao.
+
+## Testes
+
+Rodar todos os testes:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 ```
 
----
+Verificar arquivos sensiveis versionados:
+
+```powershell
+git ls-files | Select-String -Pattern "\.env|\.venv|backups|aplicar_"
+```
+
+A unica saida aceitavel relacionada a `.env` e:
+
+```text
+.env.example
+```
 
 ## Banco de dados
-
-O banco local é MariaDB.
 
 Criar tabelas locais:
 
 ```powershell
 .\.venv\Scripts\python.exe .\tools\create_db_tables.py
-```
-
-Tabelas iniciais esperadas:
-
-```text
-routers
-sync_runs
-online_router_snapshots
 ```
 
 Acessar pelo Adminer:
@@ -228,148 +210,23 @@ Acessar pelo Adminer:
 URL: http://localhost:8187
 Sistema: MySQL / MariaDB
 Servidor: mariadb
-Usuário: valor de MARIADB_USER no .env
+Usuario: valor de MARIADB_USER no .env
 Senha: valor de MARIADB_PASSWORD no .env
 Base de dados: valor de MARIADB_DATABASE no .env
 ```
 
----
-
-## Observabilidade
-
-### Prometheus
-
-URL local:
-
-```text
-http://localhost:9090
-```
-
-Verificar targets:
-
-```text
-http://localhost:9090/targets
-```
-
-A API deve aparecer como `UP`.
-
-### Grafana
-
-URL local:
-
-```text
-http://localhost:3180
-```
-
-O Grafana deve usar o Prometheus como fonte de dados.
-
-Dentro do Docker, a URL do Prometheus para o Grafana é:
-
-```text
-http://prometheus:9090
-```
-
-Não coloque tokens de routers no Grafana.
-
----
-
-## Segurança
-
-Regras obrigatórias:
-
-- Nunca versionar `.env`.
-- Nunca publicar tokens reais.
-- Nunca publicar senhas reais.
-- Nunca publicar IPs sensíveis.
-- Nunca colocar tokens dos routers no Grafana.
-- Nunca expor a API publicamente sem autenticação, HTTPS, CORS controlado e política mínima de acesso.
-- Separar métricas técnicas de dados sensíveis de clientes.
-- Usar `.env.example` apenas com valores fictícios.
-
-Verificar arquivos sensíveis no Git:
-
-```powershell
-git ls-files | Select-String -Pattern "\.env|\.venv|backups|aplicar_"
-```
-
-A única saída aceitável relacionada a `.env` é:
-
-```text
-.env.example
-```
-
----
-
 ## Git
 
-Branch principal do projeto:
-
-```text
-principal
-```
-
-Fluxo básico:
-
-```powershell
-git status
-git add .
-git commit -m "mensagem do commit"
-git push
-```
-
-Antes de cada push, conferir:
+Antes de commit/push:
 
 ```powershell
 git status --short
 git ls-files | Select-String -Pattern "\.env|\.venv|backups|aplicar_"
+.\.venv\Scripts\python.exe -m pytest
 ```
 
----
+Nao fazer commit automatico a partir de tarefas do Codex.
 
-## Roadmap
+## Licenca
 
-### Fase 1 — Segurança e base
-
-- Validar `.gitignore`
-- Garantir `.env.example` sem segredos
-- Organizar estrutura de pastas
-- Criar README técnico
-
-### Fase 2 — Banco e persistência
-
-- Validar MariaDB
-- Criar models SQLAlchemy
-- Criar tabelas base
-- Evoluir de `create_all` para Alembic
-
-### Fase 3 — Observabilidade
-
-- Expor `/health`
-- Expor `/api/v1/ready`
-- Expor `/metrics`
-- Integrar Prometheus
-- Integrar Grafana
-
-### Fase 4 — Frontend-ready
-
-- Padronizar schemas Pydantic
-- Versionar endpoints
-- Criar filtros, paginação e ordenação
-- Preparar CORS controlado
-
-### Fase 5 — Produção
-
-- Criar Dockerfile da API
-- Criar compose de produção
-- Adicionar autenticação
-- Adicionar logs estruturados
-- Planejar backup e restore
-- Preparar deploy Linux/Debian/Proxmox
-
----
-
-## Licença
-
-Projeto privado/proprietário.
-
-Todos os direitos reservados, salvo autorização expressa da proprietária do projeto.
+Projeto privado/proprietario. Todos os direitos reservados, salvo autorizacao expressa da proprietaria do projeto.
