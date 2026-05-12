@@ -197,7 +197,8 @@ def get_online_aggregate_by_router_id(router_id: int) -> dict:
     
     client = NextRouterClient(
         base_url=f"https://{router_config.ip}",
-        timeout=settings.router_request_timeout_seconds,
+        timeout=settings.nextrouter_timeout_seconds,
+        verify_ssl=settings.nextrouter_verify_ssl,
     )
     
     token = router_config.token.get_secret_value()

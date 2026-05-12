@@ -27,7 +27,7 @@ def list_routers() -> list[RouterOut]:
                 ip=router_config.ip,
                 base_url=f"https://{router_config.ip}",
                 is_active=True,
-                verify_tls=False,
+                verify_tls=settings.nextrouter_verify_ssl,
             )
         )
 
@@ -78,3 +78,22 @@ def get_router_secret_by_router_id(router_id: int):
         return None
     
     return routers[router_id - 1]
+
+
+def get_router_secret_by_name(router_name: str):
+    """Busca configuracao interna por nome ou slug.
+
+    IMPORTANTE: retorna credenciais. Nunca usar em respostas publicas.
+    """
+    normalized = (router_name or "").strip().lower()
+    if not normalized:
+        return None
+
+    for router_config in settings.routers:
+        router_slug = make_slug(router_config.name, router_config.ip).lower()
+        if router_config.name.strip().lower() == normalized:
+            return router_config
+        if router_slug == normalized:
+            return router_config
+
+    return None

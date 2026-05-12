@@ -1,5 +1,7 @@
 """Testes para o cliente NextRouter."""
 
+from decimal import Decimal
+import logging
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +12,7 @@ from app.integrations.nextrouter.exceptions import (
     NextRouterNotFoundError,
     NextRouterRateLimitError,
     NextRouterTimeoutError,
+    NextRouterValidationError,
 )
 
 
@@ -110,3 +113,86 @@ def test_get_online_calls_aggregate_timeout(mock_client_class):
     
     with pytest.raises(NextRouterTimeoutError):
         client.get_online_calls_aggregate("token123", "key456")
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_request_logs_masked_url_and_uses_config(mock_client_class, caplog):
+    """Testa montagem segura: URL real nao aparece nos logs."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"saldo": "177,90"}
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://router.example.test",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient(timeout=7, verify_ssl=False)
+
+    caplog.set_level(logging.DEBUG, logger="app.integrations.nextrouter.client")
+    result = client.get_customer_balance(router, "customer-1")
+
+    assert result["balance"] == Decimal("177.90")
+    assert "token-fake-secret" not in caplog.text
+    assert "key-fake-secret" not in caplog.text
+    assert "/****/****" in caplog.text
+    assert mock_client_class.call_args.kwargs["verify"] is False
+    assert mock_client_class.call_args.kwargs["timeout"] == 7
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_nextrouter_client_validation_error_422(mock_client_class):
+    """Testa erro de validacao (422)."""
+    mock_response = MagicMock()
+    mock_response.status_code = 422
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://router.example.test",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    with pytest.raises(NextRouterValidationError):
+        client.get_customer_balance(router, "customer-1")
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_get_customer_balance_parses_money_and_params(mock_client_class):
+    """Testa get_customer_balance com mock e Decimal."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"id_cliente": "customer-1", "saldo": "177,90"}
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://router.example.test",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    result = client.get_customer_balance(router, "customer-1")
+
+    assert result == {
+        "customer_id": "customer-1",
+        "balance": Decimal("177.90"),
+    }
+    assert mock_client.get.call_args.kwargs["params"] == {"id_cliente": "customer-1"}

@@ -2,7 +2,7 @@
 from functools import cached_property
 from urllib.parse import quote_plus
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,8 +37,23 @@ class Settings(BaseSettings):
     redis_host: str = "127.0.0.1"
     redis_port: int = 6379
     redis_db: int = 0
+    nextrouter_verify_ssl: bool = True
+    nextrouter_timeout_seconds: int = 60
+    balance_cache_ttl_seconds: int = 60
+    customer_cache_ttl_seconds: int = 60
     online_cache_ttl_seconds: int = 60
     router_request_timeout_seconds: int = 60
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, value):
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"release", "prod", "production"}:
+                return False
+            if normalized in {"local", "dev", "development"}:
+                return True
+        return value
 
     @cached_property
     def routers(self) -> list[RouterSettings]:
