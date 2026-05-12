@@ -1,4 +1,4 @@
-﻿from app.models.financial import (
+from app.models.financial import (
     HistoricoSaldosDiario,
     MargemLucroOperacional,
     RelatorioAssinantesDiario,

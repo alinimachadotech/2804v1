@@ -1,4 +1,4 @@
-﻿services:
+services:
   mariadb:
     image: mariadb:11
     container_name: gerax_mariadb
