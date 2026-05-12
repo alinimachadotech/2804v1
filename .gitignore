@@ -1,4 +1,4 @@
-﻿# Ambiente local
+# Ambiente local
 .env
 .env.*
 !.env.example

@@ -1,4 +1,4 @@
-﻿import json
+import json
 from functools import cached_property
 from urllib.parse import quote_plus
 

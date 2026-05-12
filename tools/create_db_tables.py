@@ -1,4 +1,4 @@
-﻿from sqlalchemy import inspect
+from sqlalchemy import inspect
 
 from pathlib import Path
 import sys

@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.core.settings import settings
 from app.db.session import ping_database

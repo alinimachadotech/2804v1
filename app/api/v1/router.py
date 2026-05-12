@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter
+from fastapi import APIRouter
 
 from app.api.v1.endpoints import contacts, customers, health, online_calls, reports, routers
 
