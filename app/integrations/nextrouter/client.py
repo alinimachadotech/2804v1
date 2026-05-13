@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+import time
 from decimal import Decimal
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -111,8 +112,8 @@ class NextRouterClient:
 
         raw_url = (
             self._get_field(router, "base_url")
-            or self._get_field(router, "ip")
             or self._get_field(router, "host")
+            or self._get_field(router, "ip")
         )
         if not raw_url:
             raise NextRouterError("URL base do router nao configurada")
@@ -174,6 +175,65 @@ class NextRouterClient:
                 clean[key] = value
         return clean
 
+    @staticmethod
+    def _sanitize_text(value: Any, *secrets: str) -> str:
+        text = str(value or "")
+        for secret in secrets:
+            if secret:
+                text = text.replace(secret, "****")
+        return mask_url(text)
+
+    @staticmethod
+    def _endpoint_logical_name(endpoint_template: str) -> str:
+        endpoint = endpoint_template.split("/{token}/{key}", 1)[0].rsplit("/", 1)[-1]
+        return endpoint or endpoint_template
+
+    @staticmethod
+    def _sanitize_path(url: str) -> str:
+        path = urlsplit(url).path
+        parts = path.split("/")
+        try:
+            api_index = parts.index("api")
+        except ValueError:
+            return path
+
+        if len(parts) > api_index + 3:
+            masked_parts = list(parts)
+            masked_parts[api_index + 2] = "***"
+            masked_parts[api_index + 3] = "***"
+            return "/".join(masked_parts)
+        return path
+
+    def _diagnostics(
+        self,
+        *,
+        endpoint_template: str,
+        router: Any | None,
+        url: str,
+        params: dict[str, Any],
+        status_code: int | None,
+        body: Any | None,
+        elapsed_ms: float,
+        exception_type: str | None = None,
+        token: str = "",
+        key: str = "",
+    ) -> dict[str, Any]:
+        return {
+            "endpoint": self._endpoint_logical_name(endpoint_template),
+            "router_name": self._get_field(router, "name"),
+            "base_url": self._sanitize_text(
+                self._base_url_for_router(router),
+                token,
+                key,
+            ),
+            "path": self._sanitize_path(url),
+            "query_params": dict(params),
+            "status_code": status_code,
+            "body_preview": self._sanitize_text(str(body or "")[:500], token, key),
+            "exception_type": exception_type,
+            "elapsed_ms": round(elapsed_ms, 2),
+        }
+
     def _raise_for_status(self, status_code: int) -> None:
         error_class = self._STATUS_ERRORS.get(status_code)
         if error_class:
@@ -197,6 +257,7 @@ class NextRouterClient:
         token_value, key_value = self._credentials_for_router(router, token, key)
         url = self._build_url(endpoint_template, token_value, key_value, router)
         clean_params = self._clean_params(params)
+        started_at = time.perf_counter()
 
         logger.debug("Requisicao NextRouter: %s", mask_url(url))
 
@@ -206,14 +267,106 @@ class NextRouterClient:
                 timeout=self.timeout,
             ) as client:
                 response = client.get(url, params=clean_params)
-                self._raise_for_status(response.status_code)
+                if response.status_code >= 400:
+                    error_class = self._STATUS_ERRORS.get(response.status_code)
+                    if response.status_code >= 500:
+                        error_class = NextRouterServerError
+                    if error_class is None:
+                        error_class = NextRouterError
+
+                    diagnostics = self._diagnostics(
+                        endpoint_template=endpoint_template,
+                        router=router,
+                        url=url,
+                        params=clean_params,
+                        status_code=response.status_code,
+                        body=response.text,
+                        elapsed_ms=(time.perf_counter() - started_at) * 1000,
+                        exception_type=error_class.__name__,
+                        token=token_value,
+                        key=key_value,
+                    )
+                    logger.error(
+                        "Erro NextRouter endpoint=%s router_name=%s base_url=%s "
+                        "path=%s query_params=%s status_code=%s body_preview=%s "
+                        "exception_type=%s elapsed_ms=%s",
+                        diagnostics["endpoint"],
+                        diagnostics["router_name"],
+                        diagnostics["base_url"],
+                        diagnostics["path"],
+                        diagnostics["query_params"],
+                        diagnostics["status_code"],
+                        diagnostics["body_preview"],
+                        diagnostics["exception_type"],
+                        diagnostics["elapsed_ms"],
+                    )
+                    raise error_class(
+                        f"Erro HTTP {response.status_code} do NextRouter",
+                        diagnostics=diagnostics,
+                    )
                 return response.json()
         except httpx.TimeoutException as exc:
+            diagnostics = self._diagnostics(
+                endpoint_template=endpoint_template,
+                router=router,
+                url=url,
+                params=clean_params,
+                status_code=None,
+                body=None,
+                elapsed_ms=(time.perf_counter() - started_at) * 1000,
+                exception_type=type(exc).__name__,
+                token=token_value,
+                key=key_value,
+            )
+            logger.error(
+                "Erro NextRouter endpoint=%s router_name=%s base_url=%s path=%s "
+                "query_params=%s status_code=%s body_preview=%s exception_type=%s "
+                "elapsed_ms=%s",
+                diagnostics["endpoint"],
+                diagnostics["router_name"],
+                diagnostics["base_url"],
+                diagnostics["path"],
+                diagnostics["query_params"],
+                diagnostics["status_code"],
+                diagnostics["body_preview"],
+                diagnostics["exception_type"],
+                diagnostics["elapsed_ms"],
+            )
             raise NextRouterTimeoutError(
-                f"Timeout ao comunicar com NextRouter (>{self.timeout}s)"
+                f"Timeout ao comunicar com NextRouter (>{self.timeout}s)",
+                diagnostics=diagnostics,
             ) from exc
         except httpx.HTTPError as exc:
-            raise NextRouterError("Erro de comunicacao com NextRouter") from exc
+            diagnostics = self._diagnostics(
+                endpoint_template=endpoint_template,
+                router=router,
+                url=url,
+                params=clean_params,
+                status_code=None,
+                body=None,
+                elapsed_ms=(time.perf_counter() - started_at) * 1000,
+                exception_type=type(exc).__name__,
+                token=token_value,
+                key=key_value,
+            )
+            logger.error(
+                "Erro NextRouter endpoint=%s router_name=%s base_url=%s path=%s "
+                "query_params=%s status_code=%s body_preview=%s exception_type=%s "
+                "elapsed_ms=%s",
+                diagnostics["endpoint"],
+                diagnostics["router_name"],
+                diagnostics["base_url"],
+                diagnostics["path"],
+                diagnostics["query_params"],
+                diagnostics["status_code"],
+                diagnostics["body_preview"],
+                diagnostics["exception_type"],
+                diagnostics["elapsed_ms"],
+            )
+            raise NextRouterError(
+                "Erro de comunicacao com NextRouter",
+                diagnostics=diagnostics,
+            ) from exc
         except ValueError as exc:
             raise NextRouterError("Resposta invalida do NextRouter") from exc
 
@@ -332,8 +485,11 @@ class NextRouterClient:
         limit: int = 100,
         **filters: Any,
     ) -> list[dict[str, Any]]:
-        endpoint = self._with_optional_id(PROFIT_CUSTOMERS, customer_id)
+        endpoint = PROFIT_CUSTOMERS
         params = {**filters, **self._pagination(start, limit)}
+        if customer_id not in (None, ""):
+            params.pop("customer_id", None)
+            params["customers[]"] = customer_id
         payload = self._request(endpoint, router=router, params=params)
         return normalize_money_collection(payload)
 
@@ -345,8 +501,11 @@ class NextRouterClient:
         limit: int = 100,
         **filters: Any,
     ) -> list[dict[str, Any]]:
-        endpoint = self._with_optional_id(PROFIT_GATEWAYS, customer_id)
+        endpoint = PROFIT_GATEWAYS
         params = {**filters, **self._pagination(start, limit)}
+        if customer_id not in (None, ""):
+            params.pop("customer_id", None)
+            params["customers[]"] = customer_id
         payload = self._request(endpoint, router=router, params=params)
         return normalize_money_collection(payload)
 

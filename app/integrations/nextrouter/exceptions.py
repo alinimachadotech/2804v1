@@ -1,46 +1,41 @@
-"""Exceções do NextRouter."""
+"""Excecoes do NextRouter."""
 
 
 class NextRouterError(Exception):
-    """Erro genérico do NextRouter."""
-    pass
+    """Erro generico do NextRouter."""
+
+    def __init__(self, message: str, diagnostics: dict | None = None):
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
 
 
 class NextRouterTimeoutError(NextRouterError):
-    """Erro de timeout na comunicação com NextRouter."""
-    pass
+    """Erro de timeout na comunicacao com NextRouter."""
 
 
 class NextRouterAuthError(NextRouterError):
-    """Erro de autenticação (token/key inválido)."""
-    pass
+    """Erro de autenticacao (token/key invalido)."""
 
 
 class NextRouterBadRequestError(NextRouterError):
-    """Requisição inválida enviada ao NextRouter."""
-    pass
+    """Requisicao invalida enviada ao NextRouter."""
 
 
 class NextRouterNotFoundError(NextRouterError):
-    """Recurso não encontrado no NextRouter."""
-    pass
+    """Recurso nao encontrado no NextRouter."""
 
 
 class NextRouterPayloadTooLargeError(NextRouterError):
     """Payload grande demais para o NextRouter."""
-    pass
 
 
 class NextRouterValidationError(NextRouterError):
-    """Erro de validação retornado pelo NextRouter."""
-    pass
+    """Erro de validacao retornado pelo NextRouter."""
 
 
 class NextRouterRateLimitError(NextRouterError):
-    """Taxa de requisições excedida no NextRouter."""
-    pass
+    """Taxa de requisicoes excedida no NextRouter."""
 
 
 class NextRouterServerError(NextRouterError):
     """Erro 5xx retornado pelo NextRouter."""
-    pass

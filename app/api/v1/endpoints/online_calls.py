@@ -52,7 +52,14 @@ online_router = APIRouter(prefix="/api/v1/online", tags=["Online Calls"])
 noc_router = APIRouter(prefix="/api/v1/noc/online", tags=["NOC"])
 
 
-def _get_or_collect_online_aggregate_all() -> OnlineAggregateAllRoutersOut:
+def _get_or_collect_online_aggregate_all(
+    router_name: str | None = None,
+) -> OnlineAggregateAllRoutersOut:
+    if router_name not in (None, ""):
+        result = get_online_aggregate_all_routers(router_name=router_name)
+        update_online_metrics(result.model_dump())
+        return result
+
     cached_data = get_cached_online_aggregate_all()
     if cached_data:
         update_online_metrics(cached_data.model_dump())
@@ -89,8 +96,11 @@ def read_online_calls(
 
 
 @noc_router.get("/aggregate", response_model=OnlineAggregateAllRoutersOut)
-def read_noc_online_aggregate():
-    return _get_or_collect_online_aggregate_all()
+def read_noc_online_aggregate(router_name: str | None = None):
+    try:
+        return _get_or_collect_online_aggregate_all(router_name=router_name)
+    except Exception as exc:
+        handle_service_error(exc)
 
 
 @noc_router.get("/routes")

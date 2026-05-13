@@ -2,6 +2,7 @@
 
 from fastapi import HTTPException
 
+from app.core.settings import settings
 from app.integrations.nextrouter.exceptions import (
     NextRouterAuthError,
     NextRouterBadRequestError,
@@ -14,6 +15,24 @@ from app.integrations.nextrouter.exceptions import (
     NextRouterValidationError,
 )
 from app.services.balance_service import RouterNotFoundError
+
+
+def _is_local_env() -> bool:
+    return str(settings.app_env).strip().lower() in {"local", "dev", "development"}
+
+
+def _nextrouter_detail(default_message: str, exc: Exception):
+    diagnostics = getattr(exc, "diagnostics", None) or {}
+    if not _is_local_env() or not diagnostics:
+        return default_message
+
+    return {
+        "message": default_message,
+        "upstream_status_code": diagnostics.get("status_code"),
+        "upstream_body_preview": diagnostics.get("body_preview"),
+        "endpoint": diagnostics.get("endpoint"),
+        "path": diagnostics.get("path"),
+    }
 
 
 def handle_service_error(exc: Exception):
@@ -34,7 +53,13 @@ def handle_service_error(exc: Exception):
     if isinstance(exc, NextRouterTimeoutError):
         raise HTTPException(status_code=504, detail="Timeout ao comunicar com NextRouter")
     if isinstance(exc, NextRouterServerError):
-        raise HTTPException(status_code=502, detail="Erro 5xx do NextRouter")
+        raise HTTPException(
+            status_code=502,
+            detail=_nextrouter_detail("Erro 5xx do NextRouter", exc),
+        )
     if isinstance(exc, NextRouterError):
-        raise HTTPException(status_code=502, detail="Erro ao comunicar com NextRouter")
+        raise HTTPException(
+            status_code=502,
+            detail=_nextrouter_detail("Erro ao comunicar com NextRouter", exc),
+        )
     raise exc

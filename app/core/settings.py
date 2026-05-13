@@ -11,6 +11,9 @@ class RouterSettings(BaseModel):
     ip: str
     token: SecretStr = Field(repr=False)
     key: SecretStr = Field(repr=False)
+    host: str | None = None
+    base_url: str | None = None
+    verify_tls: bool | None = None
 
 
 class Settings(BaseSettings):

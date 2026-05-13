@@ -44,6 +44,22 @@ def _out_from_cached(payload: dict) -> CustomerBalanceOut:
         router_name=str(payload["router_name"]),
         customer_id=str(payload["customer_id"]),
         balance=parse_money(payload["balance"]),
+        usable_balance=(
+            parse_money(payload["usable_balance"], default=None)
+            if payload.get("usable_balance") is not None
+            else None
+        ),
+        customer_balance=(
+            parse_money(payload["customer_balance"], default=None)
+            if payload.get("customer_balance") is not None
+            else None
+        ),
+        customer_limit=(
+            parse_money(payload["customer_limit"], default=None)
+            if payload.get("customer_limit") is not None
+            else None
+        ),
+        tipo_tar=payload.get("tipo_tar"),
         cached=True,
     )
 
@@ -71,6 +87,10 @@ def get_customer_balance(
         router_name=router.name,
         customer_id=str(payload.get("customer_id") or customer_id),
         balance=parse_money(balance),
+        usable_balance=payload.get("usable_balance"),
+        customer_balance=payload.get("customer_balance"),
+        customer_limit=payload.get("customer_limit"),
+        tipo_tar=payload.get("tipo_tar"),
         cached=False,
     )
 

@@ -291,7 +291,9 @@ def get_online_aggregate_by_router_id(router_id: int) -> dict:
     return _build_client().get_online_calls_aggregate(router=router_config)
 
 
-def get_online_aggregate_all_routers() -> OnlineAggregateAllRoutersOut:
+def get_online_aggregate_all_routers(
+    router_name: str | None = None,
+) -> OnlineAggregateAllRoutersOut:
     """Busca agregação de chamadas online de todos os routers.
     
     Se um router falhar, registra e continua com os outros.
@@ -300,6 +302,16 @@ def get_online_aggregate_all_routers() -> OnlineAggregateAllRoutersOut:
         OnlineAggregateAllRoutersOut com dados consolidados
     """
     routers = list_routers()
+    if router_name not in (None, ""):
+        normalized_router_name = str(router_name).strip().lower()
+        routers = [
+            router
+            for router in routers
+            if router.name.strip().lower() == normalized_router_name
+            or router.slug.strip().lower() == normalized_router_name
+        ]
+        if not routers:
+            raise RouterNotFoundError("Router nao encontrado")
     
     # Acumuladores para campos numéricos
     total_total = 0

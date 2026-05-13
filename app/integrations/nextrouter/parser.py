@@ -119,20 +119,66 @@ def normalize_customer_balance(payload: Any, customer_id: Any | None = None) -> 
     """Normaliza saldo de cliente para contrato interno."""
     item = first_payload_item(payload)
     raw_customer_id = customer_id or pick(item, "customer_id", "id_customer", "id_cliente", "id")
-    raw_balance = pick(item, "balance", "saldo", "credit", "credito", "amount", "valor")
+    raw_usable_balance = pick(item, "usable_balance")
+    raw_customer_balance = pick(item, "customer_balance")
+    raw_customer_limit = pick(item, "customer_limit")
+    raw_balance = pick(
+        item,
+        "usable_balance",
+        "customer_balance",
+        "balance",
+        "saldo",
+        "credit",
+        "credito",
+        "amount",
+        "valor",
+    )
+
+    usable_balance = (
+        parse_money(raw_usable_balance, default=None)
+        if raw_usable_balance is not None
+        else None
+    )
+    customer_balance = (
+        parse_money(raw_customer_balance, default=None)
+        if raw_customer_balance is not None
+        else None
+    )
+    customer_limit = (
+        parse_money(raw_customer_limit, default=None)
+        if raw_customer_limit is not None
+        else None
+    )
 
     return {
         "customer_id": str(raw_customer_id) if raw_customer_id is not None else None,
         "balance": parse_money(raw_balance),
+        "usable_balance": usable_balance,
+        "customer_balance": customer_balance,
+        "customer_limit": customer_limit,
+        "tipo_tar": pick(item, "tipo_tar"),
     }
 
 
 def normalize_customer(payload: Any) -> dict[str, Any]:
     """Normaliza dados basicos de cliente."""
     item = first_payload_item(payload)
+    raw_customer_id = pick(item, "customer_id", "id_customer", "id_cliente", "id")
     return {
-        "customer_id": pick(item, "customer_id", "id_customer", "id_cliente", "id"),
-        "name": pick(item, "name", "nome", "cliente"),
+        "customer_id": raw_customer_id,
+        "name": pick(
+            item,
+            "nome_fantasia",
+            "razao_social",
+            "name",
+            "nome",
+            "cliente",
+            "customer_id",
+            "id_customer",
+            "id_cliente",
+            "id",
+        )
+        or raw_customer_id,
         "status": pick(item, "status", "situacao", "active", "ativo"),
         "raw": item,
     }

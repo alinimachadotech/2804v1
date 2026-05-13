@@ -12,6 +12,7 @@ from app.integrations.nextrouter.exceptions import (
     NextRouterError,
     NextRouterNotFoundError,
     NextRouterRateLimitError,
+    NextRouterServerError,
     NextRouterTimeoutError,
     NextRouterValidationError,
 )
@@ -38,6 +39,38 @@ def test_nextrouter_client_exposes_only_read_only_router_methods():
     assert not hasattr(NextRouterClient, "set_customer_status")
     assert not hasattr(NextRouterClient, "manage_credit")
     assert not hasattr(NextRouterClient, "delete_online_call")
+
+
+def test_nextrouter_client_base_url_priority():
+    client = NextRouterClient()
+
+    assert (
+        client._base_url_for_router(
+            {
+                "base_url": "https://router-base.example.test/",
+                "host": "router-host.example.test",
+                "ip": "192.0.2.10",
+            }
+        )
+        == "https://router-base.example.test"
+    )
+    assert (
+        client._base_url_for_router(
+            {
+                "host": "router-host.example.test",
+                "ip": "192.0.2.10",
+            }
+        )
+        == "https://router-host.example.test"
+    )
+    assert (
+        client._base_url_for_router(
+            {
+                "ip": "192.0.2.10",
+            }
+        )
+        == "https://192.0.2.10"
+    )
 
 
 @patch("app.integrations.nextrouter.client.httpx.Client")
@@ -205,6 +238,10 @@ def test_get_customer_balance_parses_money_and_params(mock_client_class):
     assert result == {
         "customer_id": "customer-1",
         "balance": Decimal("177.90"),
+        "usable_balance": None,
+        "customer_balance": None,
+        "customer_limit": None,
+        "tipo_tar": None,
     }
     called_url = mock_client.get.call_args.args[0]
     assert called_url.endswith("/api/getCustomerBalance/token-fake-secret/key-fake-secret/customer-1")
@@ -250,3 +287,194 @@ def test_get_credit_history_uses_get_path_and_pagination_only(mock_client_class)
     }
     mock_client.post.assert_not_called()
     mock_client.delete.assert_not_called()
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_get_cdr_uses_customer_id_as_optional_path_param(mock_client_class):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://plataforma4.geraxtelecom.com.br",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    client.get_cdr(
+        router,
+        customer_id="179",
+        date_ini="2026-05-12",
+        date_end="2026-05-12",
+        time_ini="00:00:00",
+        time_end="00:05:00",
+        start=0,
+        limit=10,
+    )
+
+    called_url = mock_client.get.call_args.args[0]
+    assert called_url.endswith("/api/cdr/token-fake-secret/key-fake-secret/179")
+    assert mock_client.get.call_args.kwargs["params"] == {
+        "date_ini": "2026-05-12",
+        "date_end": "2026-05-12",
+        "time_ini": "00:00:00",
+        "time_end": "00:05:00",
+        "start": 0,
+        "limit": 10,
+    }
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_get_cdr_disconnection_uses_customer_id_as_optional_path_param(
+    mock_client_class,
+):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://plataforma4.geraxtelecom.com.br",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    client.get_cdr_disconnection(
+        router,
+        customer_id="179",
+        date_ini="2026-05-12",
+        date_end="2026-05-12",
+        time_ini="00:00:00",
+        time_end="00:05:00",
+        start=0,
+        limit=10,
+    )
+
+    called_url = mock_client.get.call_args.args[0]
+    assert called_url.endswith(
+        "/api/cdrDisconnection/token-fake-secret/key-fake-secret/179"
+    )
+    assert mock_client.get.call_args.kwargs["params"] == {
+        "date_ini": "2026-05-12",
+        "date_end": "2026-05-12",
+        "time_ini": "00:00:00",
+        "time_end": "00:05:00",
+        "start": 0,
+        "limit": 10,
+    }
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_profit_customers_maps_customer_id_to_customers_array(mock_client_class):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://router.example.test",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    client.get_profit_customers(
+        router,
+        customer_id="179",
+        date_ini="2026-05-12",
+        date_end="2026-05-12",
+        start=0,
+        limit=10,
+    )
+
+    called_url = mock_client.get.call_args.args[0]
+    assert called_url.endswith("/api/profitCustomers/token-fake-secret/key-fake-secret")
+    assert mock_client.get.call_args.kwargs["params"] == {
+        "date_ini": "2026-05-12",
+        "date_end": "2026-05-12",
+        "start": 0,
+        "limit": 10,
+        "customers[]": "179",
+    }
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_profit_gateways_maps_customer_id_to_customers_array(mock_client_class):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://router.example.test",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    client.get_profit_gateways(router, customer_id="179", start=0, limit=10)
+
+    called_url = mock_client.get.call_args.args[0]
+    assert called_url.endswith("/api/profitGateways/token-fake-secret/key-fake-secret")
+    assert mock_client.get.call_args.kwargs["params"] == {
+        "start": 0,
+        "limit": 10,
+        "customers[]": "179",
+    }
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_nextrouter_5xx_log_is_sanitized(mock_client_class, caplog):
+    mock_response = MagicMock()
+    mock_response.status_code = 500
+    mock_response.text = "server exploded token-fake-secret key-fake-secret"
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "name": "Router21/gerax",
+        "base_url": "https://plataforma4.geraxtelecom.com.br",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    caplog.set_level(logging.ERROR, logger="app.integrations.nextrouter.client")
+    with pytest.raises(NextRouterServerError):
+        client.get_cdr(router, customer_id="179")
+
+    assert "Router21/gerax" in caplog.text
+    assert "status_code=500" in caplog.text
+    assert "https://plataforma4.geraxtelecom.com.br" in caplog.text
+    assert "path=/api/cdr/***/***/179" in caplog.text
+    assert "endpoint=cdr" in caplog.text
+    assert "token-fake-secret" not in caplog.text
+    assert "key-fake-secret" not in caplog.text
+    assert "****" in caplog.text

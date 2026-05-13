@@ -15,19 +15,32 @@ def make_slug(name: str, ip: str) -> str:
     return f"{base}-{ip_suffix}"
 
 
+def resolve_router_base_url(router_config) -> str:
+    if router_config.base_url:
+        return str(router_config.base_url).strip().rstrip("/")
+    if router_config.host:
+        return f"https://{str(router_config.host).strip().rstrip('/')}"
+    return f"https://{router_config.ip}"
+
+
 def list_routers() -> list[RouterOut]:
     routers: list[RouterOut] = []
 
     for index, router_config in enumerate(settings.routers, start=1):
+        verify_tls = (
+            router_config.verify_tls
+            if router_config.verify_tls is not None
+            else settings.nextrouter_verify_ssl
+        )
         routers.append(
             RouterOut(
                 id=index,
                 name=router_config.name,
                 slug=make_slug(router_config.name, router_config.ip),
                 ip=router_config.ip,
-                base_url=f"https://{router_config.ip}",
+                base_url=resolve_router_base_url(router_config),
                 is_active=True,
-                verify_tls=settings.nextrouter_verify_ssl,
+                verify_tls=verify_tls,
             )
         )
 
