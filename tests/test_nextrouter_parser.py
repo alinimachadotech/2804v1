@@ -7,6 +7,7 @@ import pytest
 from app.integrations.nextrouter.parser import (
     normalize_customer,
     normalize_customer_balance,
+    normalize_report_payload,
     parse_money,
 )
 
@@ -100,3 +101,29 @@ def test_normalize_customer_name_falls_back_to_customer_id():
     result = normalize_customer({"id_cliente": "179"})
 
     assert result["name"] == "179"
+
+
+def test_normalize_report_payload_preserves_totals_and_data():
+    payload = {
+        "total_records": 2,
+        "records": 2,
+        "total_time": "00:01:00",
+        "total_time_text": "1 minuto",
+        "total_value": "10,50",
+        "total_cost_value": "6,25",
+        "total_profit_on_ass": "4,25",
+        "data": [{"valor": "10,50", "cost": "6,25"}],
+    }
+
+    result = normalize_report_payload(payload)
+
+    assert result["total_records"] == 2
+    assert result["records"] == 2
+    assert result["total_time"] == "00:01:00"
+    assert result["total_time_text"] == "1 minuto"
+    assert result["total_value"] == "10,50"
+    assert result["total_cost_value"] == "6,25"
+    assert result["total_profit_on_ass"] == "4,25"
+    assert result["data"] == [
+        {"valor": Decimal("10.50"), "cost": Decimal("6.25")}
+    ]

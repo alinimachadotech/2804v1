@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.api.v1.errors import handle_service_error
+from app.core.auth import require_permissions
 from app.schemas.balance import CustomerBalanceOut
 from app.schemas.customer import CustomerOut
 from app.schemas.financial import CreditHistoryOut
@@ -13,7 +14,11 @@ from app.services.customer_service import get_customer
 from app.services.financial_service import get_credit_history
 
 
-router = APIRouter(prefix="/api/v1/customers", tags=["Customers"])
+router = APIRouter(
+    prefix="/api/v1/customers",
+    tags=["Customers"],
+    dependencies=[Depends(require_permissions(["customers:read"]))],
+)
 
 
 @router.get("/{customer_id}/balance", response_model=CustomerBalanceOut)

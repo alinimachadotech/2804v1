@@ -39,7 +39,7 @@ from app.integrations.nextrouter.parser import (
     normalize_customer,
     normalize_customer_balance,
     normalize_money_collection,
-    normalize_passthrough,
+    normalize_report_payload,
 )
 from app.utils.masking import mask_url
 
@@ -174,6 +174,63 @@ class NextRouterClient:
             else:
                 clean[key] = value
         return clean
+
+    @classmethod
+    def _array_filter_values(cls, value: Any) -> list[Any]:
+        if value in (None, ""):
+            return []
+
+        if isinstance(value, (list, tuple, set)):
+            values: list[Any] = []
+            for item in value:
+                values.extend(cls._array_filter_values(item))
+            return values
+
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+
+        return [value]
+
+    @classmethod
+    def _set_repeated_param(
+        cls,
+        params: dict[str, Any],
+        target_key: str,
+        *source_keys: str,
+        extra_values: tuple[Any, ...] = (),
+    ) -> None:
+        values: list[Any] = []
+        for value in extra_values:
+            values.extend(cls._array_filter_values(value))
+        for source_key in source_keys:
+            values.extend(cls._array_filter_values(params.pop(source_key, None)))
+
+        if not values:
+            return
+
+        unique_values = list(dict.fromkeys(str(value) for value in values))
+        params[target_key] = unique_values[0] if len(unique_values) == 1 else unique_values
+
+    @classmethod
+    def _profit_params(
+        cls,
+        filters: dict[str, Any],
+        *,
+        customer_id: Any | None,
+        start: int,
+        limit: int,
+    ) -> dict[str, Any]:
+        params = {**filters, **cls._pagination(start, limit)}
+        params.pop("customer_id", None)
+        cls._set_repeated_param(
+            params,
+            "customers[]",
+            "customers",
+            "customers[]",
+            extra_values=(customer_id,),
+        )
+        cls._set_repeated_param(params, "gateways[]", "gateways", "gateways[]")
+        return params
 
     @staticmethod
     def _sanitize_text(value: Any, *secrets: str) -> str:
@@ -445,11 +502,11 @@ class NextRouterClient:
         start: int = 0,
         limit: int = 100,
         **filters: Any,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         endpoint = self._with_optional_id(CDR, customer_id)
         params = {**filters, **self._pagination(start, limit)}
         payload = self._request(endpoint, router=router, params=params)
-        return normalize_money_collection(payload)
+        return normalize_report_payload(payload)
 
     def get_cdr_disconnection(
         self,
@@ -458,11 +515,11 @@ class NextRouterClient:
         start: int = 0,
         limit: int = 100,
         **filters: Any,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         endpoint = self._with_optional_id(CDR_DISCONNECTION, customer_id)
         params = {**filters, **self._pagination(start, limit)}
         payload = self._request(endpoint, router=router, params=params)
-        return normalize_money_collection(payload)
+        return normalize_report_payload(payload)
 
     def get_cdr_sipcodes(
         self,
@@ -471,11 +528,11 @@ class NextRouterClient:
         start: int = 0,
         limit: int = 100,
         **filters: Any,
-    ) -> Any:
+    ) -> dict[str, Any]:
         endpoint = self._with_optional_id(CDR_SIPCODES, customer_id)
         params = {**filters, **self._pagination(start, limit)}
         payload = self._request(endpoint, router=router, params=params)
-        return normalize_passthrough(payload)
+        return normalize_report_payload(payload)
 
     def get_profit_customers(
         self,
@@ -484,14 +541,16 @@ class NextRouterClient:
         start: int = 0,
         limit: int = 100,
         **filters: Any,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         endpoint = PROFIT_CUSTOMERS
-        params = {**filters, **self._pagination(start, limit)}
-        if customer_id not in (None, ""):
-            params.pop("customer_id", None)
-            params["customers[]"] = customer_id
+        params = self._profit_params(
+            filters,
+            customer_id=customer_id,
+            start=start,
+            limit=limit,
+        )
         payload = self._request(endpoint, router=router, params=params)
-        return normalize_money_collection(payload)
+        return normalize_report_payload(payload)
 
     def get_profit_gateways(
         self,
@@ -500,14 +559,16 @@ class NextRouterClient:
         start: int = 0,
         limit: int = 100,
         **filters: Any,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         endpoint = PROFIT_GATEWAYS
-        params = {**filters, **self._pagination(start, limit)}
-        if customer_id not in (None, ""):
-            params.pop("customer_id", None)
-            params["customers[]"] = customer_id
+        params = self._profit_params(
+            filters,
+            customer_id=customer_id,
+            start=start,
+            limit=limit,
+        )
         payload = self._request(endpoint, router=router, params=params)
-        return normalize_money_collection(payload)
+        return normalize_report_payload(payload)
 
     def get_contacts(
         self,

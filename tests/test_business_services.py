@@ -7,7 +7,7 @@ from unittest.mock import patch
 from app.services.audit_service import sanitize_payload
 from app.services.balance_service import get_customer_balance
 from app.services.customer_service import get_customer
-from app.services.reports_service import get_cdr_report
+from app.services.reports_service import get_cdr_report, get_profit_customers_report
 
 
 def fake_router():
@@ -165,3 +165,68 @@ def test_cdr_report_passes_time_filters_to_client(
         time_end="00:05:00",
     )
     mock_set_cache.assert_called_once()
+
+
+@patch("app.services.reports_service.redis_get_json")
+@patch("app.services.reports_service.redis_set_json")
+@patch("app.services.reports_service.get_router_secret_by_name")
+@patch("app.services.reports_service.NextRouterClient")
+def test_cdr_report_preserves_nextrouter_totals(
+    mock_client_class,
+    mock_get_router,
+    mock_set_cache,
+    mock_get_cache,
+):
+    mock_get_cache.return_value = None
+    mock_get_router.return_value = fake_router()
+    mock_client_class.return_value.get_cdr.return_value = {
+        "total_records": 2,
+        "records": 2,
+        "total_time": "00:02:00",
+        "total_time_text": "2 minutos",
+        "total_value": "10,00",
+        "data": [{"valor": Decimal("10.00")}],
+    }
+
+    result = get_cdr_report("Router Test", start=0, limit=10)
+
+    assert result.total_records == 2
+    assert result.records == 2
+    assert result.total_time == "00:02:00"
+    assert result.total_time_text == "2 minutos"
+    assert result.total_value == "10,00"
+    assert result.data == [{"valor": Decimal("10.00")}]
+    cached_report = mock_set_cache.call_args.args[1]["report"]
+    assert cached_report["total_records"] == 2
+    assert cached_report["data"] == [{"valor": Decimal("10.00")}]
+
+
+@patch("app.services.reports_service.redis_get_json")
+@patch("app.services.reports_service.get_router_secret_by_name")
+@patch("app.services.reports_service.NextRouterClient")
+def test_profit_report_preserves_cached_totals(
+    mock_client_class,
+    mock_get_router,
+    mock_get_cache,
+):
+    mock_get_router.return_value = fake_router()
+    mock_get_cache.return_value = {
+        "report": {
+            "total_records": 1,
+            "total_value": "20,00",
+            "total_cost_value": "12,00",
+            "total_profit_on_ass": "8,00",
+            "data": [{"profit": "8,00", "cost": "12,00"}],
+        },
+        "data": [{"profit": "8,00", "cost": "12,00"}],
+    }
+
+    result = get_profit_customers_report("Router Test", start=0, limit=10)
+
+    assert result.cached is True
+    assert result.total_records == 1
+    assert result.total_value == "20,00"
+    assert result.total_cost_value == "12,00"
+    assert result.total_profit_on_ass == "8,00"
+    assert result.data == [{"profit": Decimal("8.00"), "cost": Decimal("12.00")}]
+    mock_client_class.assert_not_called()

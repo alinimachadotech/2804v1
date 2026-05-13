@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.integrations.nextrouter.exceptions import NextRouterServerError
 from app.schemas.online_calls import OnlineAggregateAllRoutersOut
-from app.schemas.reports import ReadOnlyQueryOut
+from app.schemas.reports import CdrReportOut, ProfitCustomersReportOut, ReadOnlyQueryOut
 
 
 client = TestClient(app)
@@ -51,6 +51,35 @@ def test_reports_cdr_endpoint_uses_filters_and_pagination(mock_report):
         start=10,
         limit=50,
     )
+
+
+@patch("app.api.v1.endpoints.reports.get_cdr_report")
+def test_reports_cdr_endpoint_preserves_totals(mock_report):
+    mock_report.return_value = CdrReportOut(
+        router_name="Router Test",
+        start=0,
+        limit=10,
+        total_records=2,
+        records=2,
+        total_time="00:02:00",
+        total_time_text="2 minutos",
+        total_value="10,00",
+        data=[{"id": "call-1"}],
+    )
+
+    response = client.get(
+        "/api/v1/reports/cdr",
+        params={"router_name": "Router Test", "start": 0, "limit": 10},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_records"] == 2
+    assert payload["records"] == 2
+    assert payload["total_time"] == "00:02:00"
+    assert payload["total_time_text"] == "2 minutos"
+    assert payload["total_value"] == "10,00"
+    assert payload["data"] == [{"id": "call-1"}]
 
 
 @patch("app.api.v1.endpoints.reports.get_cdr_disconnection_report")
@@ -184,6 +213,82 @@ def test_noc_online_calls_endpoint_is_read_only_get(mock_calls):
         id_rota="10",
         summary=True,
         id_record=None,
+    )
+
+
+@patch("app.api.v1.endpoints.reports.get_profit_customers_report")
+def test_profit_customers_endpoint_accepts_repeated_array_filters(mock_report):
+    mock_report.return_value = ProfitCustomersReportOut(
+        router_name="Router Test",
+        start=0,
+        limit=10,
+        data=[],
+    )
+
+    response = client.get(
+        "/api/v1/reports/profit/customers",
+        params=[
+            ("router_name", "Router Test"),
+            ("customers[]", "25"),
+            ("customers[]", "39"),
+            ("gateways[]", "1"),
+            ("gateways[]", "5"),
+            ("start", "0"),
+            ("limit", "10"),
+        ],
+    )
+
+    assert response.status_code == 200
+    mock_report.assert_called_once_with(
+        "Router Test",
+        customer_id=None,
+        date_ini=None,
+        date_end=None,
+        time_ini=None,
+        time_end=None,
+        src=None,
+        dst=None,
+        call_type=None,
+        gateways=["1", "5"],
+        customers=["25", "39"],
+        start=0,
+        limit=10,
+    )
+
+
+@patch("app.api.v1.endpoints.reports.get_profit_customers_report")
+def test_profit_customers_endpoint_keeps_simple_filter_compatibility(mock_report):
+    mock_report.return_value = ProfitCustomersReportOut(
+        router_name="Router Test",
+        start=0,
+        limit=10,
+        data=[],
+    )
+
+    response = client.get(
+        "/api/v1/reports/profit/customers",
+        params={
+            "router_name": "Router Test",
+            "customers": "25",
+            "gateways": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_report.assert_called_once_with(
+        "Router Test",
+        customer_id=None,
+        date_ini=None,
+        date_end=None,
+        time_ini=None,
+        time_end=None,
+        src=None,
+        dst=None,
+        call_type=None,
+        gateways=["1"],
+        customers=["25"],
+        start=0,
+        limit=100,
     )
 
 

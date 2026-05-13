@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.api.v1.errors import handle_service_error
-from app.schemas.reports import ReadOnlyQueryOut
+from app.core.auth import require_permissions
+from app.schemas.reports import (
+    CdrDisconnectionReportOut,
+    CdrReportOut,
+    ProfitCustomersReportOut,
+    ProfitGatewaysReportOut,
+    SipCodesReportOut,
+)
 from app.services.reports_service import (
     get_cdr_disconnection_report,
     get_cdr_report,
@@ -15,10 +22,26 @@ from app.services.reports_service import (
 )
 
 
-router = APIRouter(prefix="/api/v1/reports", tags=["Reports"])
+router = APIRouter(
+    prefix="/api/v1/reports",
+    tags=["Reports"],
+    dependencies=[Depends(require_permissions(["reports:read"]))],
+)
 
 
-@router.get("/cdr", response_model=ReadOnlyQueryOut)
+def _combine_array_filters(*values: list[str] | str | None) -> list[str] | None:
+    combined: list[str] = []
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, list):
+            combined.extend(item for item in value if item not in (None, ""))
+        elif value != "":
+            combined.append(value)
+    return combined or None
+
+
+@router.get("/cdr", response_model=CdrReportOut)
 def read_cdr(
     router_name: str = Query(..., min_length=1),
     customer_id: str | None = None,
@@ -48,7 +71,7 @@ def read_cdr(
         handle_service_error(exc)
 
 
-@router.get("/cdr-disconnections", response_model=ReadOnlyQueryOut)
+@router.get("/cdr-disconnections", response_model=CdrDisconnectionReportOut)
 def read_cdr_disconnections(
     router_name: str = Query(..., min_length=1),
     customer_id: str | None = None,
@@ -76,7 +99,7 @@ def read_cdr_disconnections(
         handle_service_error(exc)
 
 
-@router.get("/sip-codes", response_model=ReadOnlyQueryOut)
+@router.get("/sip-codes", response_model=SipCodesReportOut)
 def read_sip_codes(
     router_name: str = Query(..., min_length=1),
     customer_id: str | None = None,
@@ -94,7 +117,7 @@ def read_sip_codes(
         handle_service_error(exc)
 
 
-@router.get("/profit/customers", response_model=ReadOnlyQueryOut)
+@router.get("/profit/customers", response_model=ProfitCustomersReportOut)
 def read_profit_customers(
     router_name: str = Query(..., min_length=1),
     customer_id: str | None = None,
@@ -105,8 +128,10 @@ def read_profit_customers(
     src: str | None = None,
     dst: str | None = None,
     call_type: str | None = None,
-    gateways: str | None = None,
-    customers: str | None = None,
+    gateways: list[str] | None = Query(None),
+    customers: list[str] | None = Query(None),
+    gateways_array: list[str] | None = Query(None, alias="gateways[]"),
+    customers_array: list[str] | None = Query(None, alias="customers[]"),
     start: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
 ):
@@ -121,8 +146,8 @@ def read_profit_customers(
             src=src,
             dst=dst,
             call_type=call_type,
-            gateways=gateways,
-            customers=customers,
+            gateways=_combine_array_filters(gateways, gateways_array),
+            customers=_combine_array_filters(customers, customers_array),
             start=start,
             limit=limit,
         )
@@ -130,7 +155,7 @@ def read_profit_customers(
         handle_service_error(exc)
 
 
-@router.get("/profit/gateways", response_model=ReadOnlyQueryOut)
+@router.get("/profit/gateways", response_model=ProfitGatewaysReportOut)
 def read_profit_gateways(
     router_name: str = Query(..., min_length=1),
     customer_id: str | None = None,
@@ -141,8 +166,10 @@ def read_profit_gateways(
     src: str | None = None,
     dst: str | None = None,
     call_type: str | None = None,
-    gateways: str | None = None,
-    customers: str | None = None,
+    gateways: list[str] | None = Query(None),
+    customers: list[str] | None = Query(None),
+    gateways_array: list[str] | None = Query(None, alias="gateways[]"),
+    customers_array: list[str] | None = Query(None, alias="customers[]"),
     start: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
 ):
@@ -157,8 +184,8 @@ def read_profit_gateways(
             src=src,
             dst=dst,
             call_type=call_type,
-            gateways=gateways,
-            customers=customers,
+            gateways=_combine_array_filters(gateways, gateways_array),
+            customers=_combine_array_filters(customers, customers_array),
             start=start,
             limit=limit,
         )

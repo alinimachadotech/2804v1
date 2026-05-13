@@ -293,7 +293,12 @@ def test_get_credit_history_uses_get_path_and_pagination_only(mock_client_class)
 def test_get_cdr_uses_customer_id_as_optional_path_param(mock_client_class):
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = []
+    mock_response.json.return_value = {
+        "total_records": 1,
+        "total_time": "00:00:30",
+        "total_value": "1,50",
+        "data": [{"valor": "1,50"}],
+    }
 
     mock_client = MagicMock()
     mock_client.__enter__.return_value = mock_client
@@ -308,7 +313,7 @@ def test_get_cdr_uses_customer_id_as_optional_path_param(mock_client_class):
     }
     client = NextRouterClient()
 
-    client.get_cdr(
+    result = client.get_cdr(
         router,
         customer_id="179",
         date_ini="2026-05-12",
@@ -329,6 +334,10 @@ def test_get_cdr_uses_customer_id_as_optional_path_param(mock_client_class):
         "start": 0,
         "limit": 10,
     }
+    assert result["total_records"] == 1
+    assert result["total_time"] == "00:00:30"
+    assert result["total_value"] == "1,50"
+    assert result["data"] == [{"valor": Decimal("1.50")}]
 
 
 @patch("app.integrations.nextrouter.client.httpx.Client")
@@ -443,6 +452,124 @@ def test_profit_gateways_maps_customer_id_to_customers_array(mock_client_class):
         "start": 0,
         "limit": 10,
         "customers[]": "179",
+    }
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_profit_customers_accepts_multiple_customers_array(mock_client_class):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://router.example.test",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    client.get_profit_customers(router, customers=["25", "39"], start=0, limit=10)
+
+    assert mock_client.get.call_args.kwargs["params"] == {
+        "start": 0,
+        "limit": 10,
+        "customers[]": ["25", "39"],
+    }
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_profit_gateways_accepts_multiple_gateways_array(mock_client_class):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://router.example.test",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    client.get_profit_gateways(router, gateways=["1", "5"], start=0, limit=10)
+
+    assert mock_client.get.call_args.kwargs["params"] == {
+        "start": 0,
+        "limit": 10,
+        "gateways[]": ["1", "5"],
+    }
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_profit_reports_omit_array_filters_when_absent(mock_client_class):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://router.example.test",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    client.get_profit_customers(router, start=20, limit=30)
+
+    assert mock_client.get.call_args.kwargs["params"] == {
+        "start": 20,
+        "limit": 30,
+    }
+
+
+@patch("app.integrations.nextrouter.client.httpx.Client")
+def test_profit_reports_keep_legacy_simple_filter_params(mock_client_class):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = []
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.__exit__.return_value = False
+    mock_client.get.return_value = mock_response
+    mock_client_class.return_value = mock_client
+
+    router = {
+        "base_url": "https://router.example.test",
+        "token": "token-fake-secret",
+        "key": "key-fake-secret",
+    }
+    client = NextRouterClient()
+
+    client.get_profit_customers(
+        router,
+        customers="25,39",
+        gateways="1",
+        start=0,
+        limit=10,
+    )
+
+    assert mock_client.get.call_args.kwargs["params"] == {
+        "start": 0,
+        "limit": 10,
+        "customers[]": ["25", "39"],
+        "gateways[]": "1",
     }
 
 

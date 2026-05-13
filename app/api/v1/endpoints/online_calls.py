@@ -1,8 +1,9 @@
 """Endpoints read-only para chamadas online."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.v1.errors import handle_service_error
+from app.core.auth import require_permissions
 from app.core.online_metrics import update_online_metrics
 from app.integrations.nextrouter.exceptions import (
     NextRouterAuthError,
@@ -24,7 +25,11 @@ from app.services.online_calls_service import (
 from app.services.online_snapshot_service import save_online_snapshot
 
 
-routers_router = APIRouter(prefix="/api/v1/routers", tags=["Online Calls"])
+routers_router = APIRouter(
+    prefix="/api/v1/routers",
+    tags=["Online Calls"],
+    dependencies=[Depends(require_permissions(["noc:read"]))],
+)
 
 
 @routers_router.get("/{router_id}/online-aggregate")
@@ -48,8 +53,16 @@ def get_online_aggregate(router_id: int):
         raise HTTPException(status_code=502, detail="Erro ao comunicar com NextRouter")
 
 
-online_router = APIRouter(prefix="/api/v1/online", tags=["Online Calls"])
-noc_router = APIRouter(prefix="/api/v1/noc/online", tags=["NOC"])
+online_router = APIRouter(
+    prefix="/api/v1/online",
+    tags=["Online Calls"],
+    dependencies=[Depends(require_permissions(["noc:read"]))],
+)
+noc_router = APIRouter(
+    prefix="/api/v1/noc/online",
+    tags=["NOC"],
+    dependencies=[Depends(require_permissions(["noc:read"]))],
+)
 
 
 def _get_or_collect_online_aggregate_all(

@@ -106,6 +106,19 @@ def payload_items(payload: Any) -> list[dict[str, Any]]:
     return [payload]
 
 
+def payload_data_key(payload: Any) -> str | None:
+    """Identifica a chave de colecao usada no payload original."""
+    if not isinstance(payload, dict):
+        return None
+
+    for key in ("data", "result", "results", "rows", "items"):
+        value = payload.get(key)
+        if isinstance(value, (list, dict)):
+            return key
+
+    return None
+
+
 def pick(data: dict[str, Any], *keys: str) -> Any:
     """Retorna o primeiro campo existente e nao vazio."""
     for key in keys:
@@ -209,6 +222,23 @@ def normalize_money_collection(
                 entry[key] = parse_money(entry[key])
         normalized.append(entry)
     return normalized
+
+
+def normalize_report_payload(payload: Any) -> dict[str, Any]:
+    """Preserva totais/cabecalhos de relatorios e normaliza a colecao em data."""
+    data = normalize_money_collection(payload)
+
+    if not isinstance(payload, dict):
+        return {"data": data}
+
+    collection_key = payload_data_key(payload)
+    report = {
+        str(key): value
+        for key, value in payload.items()
+        if key != collection_key
+    }
+    report["data"] = data
+    return report
 
 
 def normalize_passthrough(payload: Any) -> Any:

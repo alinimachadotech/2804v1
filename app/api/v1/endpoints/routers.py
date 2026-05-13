@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.auth import require_permissions
 from app.schemas.router import RouterOptionOut, RouterOut
 from app.services.router_service import (
     get_router_by_id,
@@ -8,7 +9,11 @@ from app.services.router_service import (
     list_routers,
 )
 
-router = APIRouter(prefix="/api/v1/routers", tags=["Routers"])
+router = APIRouter(
+    prefix="/api/v1/routers",
+    tags=["Routers"],
+    dependencies=[Depends(require_permissions(["routers:read"]))],
+)
 
 
 @router.get("", response_model=list[RouterOut])

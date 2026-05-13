@@ -1,9 +1,11 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.v1.endpoints.health import legacy_router as health_legacy_router
 from app.api.v1.router import api_router
+from app.core.auth import require_permissions
 from app.core.settings import settings
 from app.routes.auth import router as auth_router
 
@@ -33,7 +35,15 @@ app.include_router(auth_router)
 app.include_router(health_legacy_router)
 
 # Rotas novas e versionadas.
-Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+Instrumentator().instrument(app)
+
+
+@app.get(
+    "/metrics",
+    include_in_schema=False,
+    dependencies=[Depends(require_permissions(["metrics:read"]))],
+)
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 app.include_router(api_router)
-

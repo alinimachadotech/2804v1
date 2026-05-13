@@ -10,8 +10,15 @@ from typing import Any, Callable
 from app.core.cache import redis_get_json, redis_set_json
 from app.core.settings import settings
 from app.integrations.nextrouter.client import NextRouterClient
-from app.integrations.nextrouter.parser import normalize_money_collection
-from app.schemas.reports import ReadOnlyQueryOut
+from app.integrations.nextrouter.parser import normalize_report_payload
+from app.schemas.reports import (
+    CdrDisconnectionReportOut,
+    CdrReportOut,
+    ProfitCustomersReportOut,
+    ProfitGatewaysReportOut,
+    ReadOnlyQueryOut,
+    SipCodesReportOut,
+)
 from app.services.audit_service import sanitize_payload
 from app.services.balance_service import RouterNotFoundError
 from app.services.router_service import get_router_secret_by_name
@@ -65,6 +72,12 @@ def _clean_filters(filters: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in filters.items() if value is not None}
 
 
+def _report_payload(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict) and "data" in value:
+        return value
+    return normalize_report_payload(value)
+
+
 def _query(
     *,
     namespace: str,
@@ -75,6 +88,7 @@ def _query(
     filters: dict[str, Any] | None = None,
     fetcher: ReportFetcher,
     cache_normalizer: DataNormalizer | None = None,
+    response_model: type[ReadOnlyQueryOut] = ReadOnlyQueryOut,
     use_cache: bool = True,
 ) -> ReadOnlyQueryOut:
     router = _get_router_or_raise(router_name)
@@ -87,37 +101,37 @@ def _query(
     if use_cache:
         cached = redis_get_json(key)
         if cached and "data" in cached:
-            data = cached["data"]
+            report = _report_payload(cached.get("report", cached))
             if cache_normalizer is not None:
-                data = cache_normalizer(data)
-            return ReadOnlyQueryOut(
+                report = _report_payload(cache_normalizer(report))
+            return response_model(
                 router_name=router.name,
                 customer_id=customer_id,
                 start=start,
                 limit=limit,
                 filters=clean_filters,
-                data=data,
                 cached=True,
+                **report,
             )
 
-    data = sanitize_payload(
+    report = _report_payload(sanitize_payload(
         fetcher(_build_client(), router, customer_id, start, limit, clean_filters)
-    )
+    ))
 
     redis_set_json(
         key,
-        {"data": data},
+        {"report": report, "data": report.get("data", [])},
         ttl_seconds=max(settings.read_only_cache_ttl_seconds, 1),
     )
 
-    return ReadOnlyQueryOut(
+    return response_model(
         router_name=router.name,
         customer_id=customer_id,
         start=start,
         limit=limit,
         filters=clean_filters,
-        data=data,
         cached=False,
+        **report,
     )
 
 
@@ -139,7 +153,8 @@ def get_cdr_report(
         fetcher=lambda client, router, cid, s, l, f: client.get_cdr(
             router, customer_id=cid, start=s, limit=l, **f
         ),
-        cache_normalizer=normalize_money_collection,
+        cache_normalizer=normalize_report_payload,
+        response_model=CdrReportOut,
     )
 
 
@@ -161,7 +176,8 @@ def get_cdr_disconnection_report(
         fetcher=lambda client, router, cid, s, l, f: client.get_cdr_disconnection(
             router, customer_id=cid, start=s, limit=l, **f
         ),
-        cache_normalizer=normalize_money_collection,
+        cache_normalizer=normalize_report_payload,
+        response_model=CdrDisconnectionReportOut,
     )
 
 
@@ -181,6 +197,8 @@ def get_cdr_sipcodes_report(
         fetcher=lambda client, router, cid, s, l, f: client.get_cdr_sipcodes(
             router, customer_id=cid, start=s, limit=l, **f
         ),
+        cache_normalizer=normalize_report_payload,
+        response_model=SipCodesReportOut,
     )
 
 
@@ -202,7 +220,8 @@ def get_profit_customers_report(
         fetcher=lambda client, router, cid, s, l, f: client.get_profit_customers(
             router, customer_id=cid, start=s, limit=l, **f
         ),
-        cache_normalizer=normalize_money_collection,
+        cache_normalizer=normalize_report_payload,
+        response_model=ProfitCustomersReportOut,
     )
 
 
@@ -224,5 +243,6 @@ def get_profit_gateways_report(
         fetcher=lambda client, router, cid, s, l, f: client.get_profit_gateways(
             router, customer_id=cid, start=s, limit=l, **f
         ),
-        cache_normalizer=normalize_money_collection,
+        cache_normalizer=normalize_report_payload,
+        response_model=ProfitGatewaysReportOut,
     )

@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.api.v1.errors import handle_service_error
+from app.core.auth import require_permissions
 from app.schemas.reports import ReadOnlyQueryOut
 from app.services.contacts_service import get_contacts
 
 
-router = APIRouter(prefix="/api/v1/contacts", tags=["Contacts"])
+router = APIRouter(
+    prefix="/api/v1/contacts",
+    tags=["Contacts"],
+    dependencies=[Depends(require_permissions(["customers:read"]))],
+)
 
 
 @router.get("", response_model=ReadOnlyQueryOut)
