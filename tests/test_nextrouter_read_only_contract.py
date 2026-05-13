@@ -7,12 +7,54 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+APP_ROOT = ROOT / "app"
 NEXTROUTER_ENDPOINT_MODULES = [
     ROOT / "app" / "api" / "v1" / "endpoints" / "customers.py",
     ROOT / "app" / "api" / "v1" / "endpoints" / "contacts.py",
     ROOT / "app" / "api" / "v1" / "endpoints" / "online_calls.py",
     ROOT / "app" / "api" / "v1" / "endpoints" / "reports.py",
 ]
+ALLOWED_NEXTROUTER_CLIENT_METHODS = {
+    "get_customer_balance",
+    "get_customer",
+    "get_credit_history",
+    "get_online_calls",
+    "get_online_calls_aggregate",
+    "get_cdr",
+    "get_cdr_disconnection",
+    "get_cdr_sipcodes",
+    "get_profit_customers",
+    "get_profit_gateways",
+    "get_contacts",
+}
+MUTATING_HTTP_METHODS = {"post", "put", "patch", "delete"}
+HTTP_CLIENT_OBJECT_NAMES = {
+    "client",
+    "http_client",
+    "nextrouter_client",
+    "requests",
+    "httpx",
+}
+FORBIDDEN_MUTATION_TERMS = {
+    "statusCustomer",
+    "STATUS_CUSTOMER",
+    "set_customer_status",
+    "manage_credit",
+    "delete_online_call",
+    "delete_online_calls",
+    "activate_customer",
+    "deactivate_customer",
+    "update_customer",
+    "create_customer",
+    "credit_customer",
+    "debit_customer",
+    "set_customer_credit",
+    "set_customer_balance",
+    "adjust_customer_balance",
+    "end_call",
+    "hangup_call",
+    "terminate_call",
+}
 
 
 def _source(path: Path) -> str:
@@ -20,8 +62,6 @@ def _source(path: Path) -> str:
 
 
 def test_nextrouter_related_endpoints_do_not_expose_mutation_routes():
-    forbidden_decorators = {"post", "delete"}
-
     for path in NEXTROUTER_ENDPOINT_MODULES:
         tree = ast.parse(_source(path), filename=str(path))
         for node in ast.walk(tree):
@@ -34,7 +74,7 @@ def test_nextrouter_related_endpoints_do_not_expose_mutation_routes():
                 func = decorator.func
                 if (
                     isinstance(func, ast.Attribute)
-                    and func.attr in forbidden_decorators
+                    and func.attr in MUTATING_HTTP_METHODS
                     and isinstance(func.value, ast.Name)
                     and func.value.id.endswith("router")
                 ):
@@ -46,14 +86,14 @@ def test_nextrouter_related_endpoints_do_not_expose_mutation_routes():
 def test_nextrouter_client_does_not_expose_mutation_methods():
     from app.integrations.nextrouter.client import NextRouterClient
 
-    forbidden_methods = {
-        "set_customer_status",
-        "manage_credit",
-        "delete_online_call",
+    public_methods = {
+        name
+        for name, value in vars(NextRouterClient).items()
+        if callable(value) and not name.startswith("_")
     }
 
-    for method_name in forbidden_methods:
-        assert not hasattr(NextRouterClient, method_name)
+    assert public_methods == ALLOWED_NEXTROUTER_CLIENT_METHODS
+    assert all(name.startswith("get_") for name in public_methods)
 
 
 def test_services_and_schemas_do_not_expose_mutation_contracts():
@@ -105,12 +145,6 @@ def test_nextrouter_endpoints_do_not_define_status_customer():
 
 def test_nextrouter_integration_uses_no_mutating_http_calls():
     integration_root = ROOT / "app" / "integrations" / "nextrouter"
-    forbidden_calls = {
-        ("client", "post"),
-        ("client", "delete"),
-        ("requests", "post"),
-        ("requests", "delete"),
-    }
 
     for path in integration_root.glob("*.py"):
         tree = ast.parse(_source(path), filename=str(path))
@@ -119,11 +153,68 @@ def test_nextrouter_integration_uses_no_mutating_http_calls():
                 continue
             if not isinstance(node.func, ast.Attribute):
                 continue
+
+            assert node.func.attr not in MUTATING_HTTP_METHODS, (
+                f"{path.relative_to(ROOT)} uses mutating HTTP call "
+                f".{node.func.attr}"
+            )
+
+
+def _route_method(decorator: ast.expr) -> str | None:
+    if not isinstance(decorator, ast.Call):
+        return None
+    if not isinstance(decorator.func, ast.Attribute):
+        return None
+    if not isinstance(decorator.func.value, ast.Name):
+        return None
+    if not decorator.func.value.id.endswith("router"):
+        return None
+    return decorator.func.attr
+
+
+def test_no_fastapi_mutation_route_references_nextrouter_write_operations():
+    route_roots = [APP_ROOT / "api", APP_ROOT / "routes"]
+
+    for route_root in route_roots:
+        for path in route_root.rglob("*.py"):
+            source = _source(path)
+            tree = ast.parse(source, filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+
+                methods = {
+                    method
+                    for decorator in node.decorator_list
+                    if (method := _route_method(decorator)) is not None
+                }
+                if not methods.intersection(MUTATING_HTTP_METHODS):
+                    continue
+
+                route_source = ast.get_source_segment(source, node) or ""
+                forbidden = sorted(
+                    term for term in FORBIDDEN_MUTATION_TERMS if term in route_source
+                )
+                assert not forbidden, (
+                    f"{path.relative_to(ROOT)} route {node.name} references "
+                    f"forbidden NextRouter write operation(s): {forbidden}"
+                )
+
+
+def test_app_source_does_not_use_external_mutating_http_methods():
+    for path in APP_ROOT.rglob("*.py"):
+        tree = ast.parse(_source(path), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute):
+                continue
             if not isinstance(node.func.value, ast.Name):
                 continue
+            if node.func.value.id not in HTTP_CLIENT_OBJECT_NAMES:
+                continue
 
-            call = (node.func.value.id, node.func.attr)
-            assert call not in forbidden_calls, (
-                f"{path.relative_to(ROOT)} uses mutating HTTP call "
+            assert node.func.attr not in MUTATING_HTTP_METHODS, (
+                f"{path.relative_to(ROOT)} uses external mutating HTTP method "
                 f"{node.func.value.id}.{node.func.attr}"
             )
