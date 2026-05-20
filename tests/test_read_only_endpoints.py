@@ -82,6 +82,41 @@ def test_reports_cdr_endpoint_preserves_totals(mock_report):
     assert payload["data"] == [{"id": "call-1"}]
 
 
+@patch("app.api.v1.endpoints.reports.get_cdr_report")
+def test_reports_cdr_endpoint_does_not_block_longer_periods(mock_report):
+    mock_report.return_value = CdrReportOut(
+        router_name="Router Test",
+        start=0,
+        limit=10,
+        data=[],
+    )
+
+    response = client.get(
+        "/api/v1/reports/cdr",
+        params={
+            "router_name": "Router Test",
+            "date_ini": "2026-01-01",
+            "date_end": "2026-01-31",
+            "start": 0,
+            "limit": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    mock_report.assert_called_once_with(
+        "Router Test",
+        customer_id=None,
+        date_ini="2026-01-01",
+        date_end="2026-01-31",
+        time_ini=None,
+        time_end=None,
+        device_id=None,
+        type=None,
+        start=0,
+        limit=10,
+    )
+
+
 @patch("app.api.v1.endpoints.reports.get_cdr_disconnection_report")
 def test_reports_cdr_disconnections_accepts_time_filters(mock_report):
     mock_report.return_value = ReadOnlyQueryOut(

@@ -66,7 +66,7 @@ def test_credit_history_endpoint_uses_router_name_and_pagination(mock_history):
         start=0,
         limit=50,
         date_ini="2026-01-01",
-        date_end="2026-01-31",
+        date_end="2026-01-01",
         items=[{"amount": Decimal("10.00"), "reason": "test"}],
     )
 
@@ -75,7 +75,7 @@ def test_credit_history_endpoint_uses_router_name_and_pagination(mock_history):
         params={
             "router_name": "Router Test",
             "date_ini": "2026-01-01",
-            "date_end": "2026-01-31",
+            "date_end": "2026-01-01",
             "limit": 50,
         },
     )
@@ -86,7 +86,7 @@ def test_credit_history_endpoint_uses_router_name_and_pagination(mock_history):
         "Router Test",
         "customer-1",
         date_ini="2026-01-01",
-        date_end="2026-01-31",
+        date_end="2026-01-01",
         start=0,
         limit=50,
     )

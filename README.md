@@ -136,6 +136,15 @@ GET /api/v1/reports/profit/customers
 GET /api/v1/reports/profit/gateways
 ```
 
+Exemplos de desenvolvimento e validacao manual devem consultar apenas 1 dia,
+preferencialmente o dia anterior para relatorios fechados. Isso e uma regra
+operacional para testes seguros, nao um bloqueio funcional da API:
+
+```text
+GET /api/v1/reports/cdr?router_name=Router%20Test&date_ini=2026-05-12&date_end=2026-05-12&start=0&limit=100
+GET /api/v1/reports/profit/customers?router_name=Router%20Test&date_ini=2026-05-12&date_end=2026-05-12&customers[]=25&customers[]=39&gateways[]=1&gateways[]=5&start=0&limit=100
+```
+
 Contacts:
 
 ```text

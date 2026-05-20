@@ -271,7 +271,7 @@ def test_get_credit_history_uses_get_path_and_pagination_only(mock_client_class)
         router,
         "customer-1",
         date_ini="2026-01-01",
-        date_end="2026-01-31",
+        date_end="2026-01-01",
         start=10,
         limit=50,
     )
@@ -281,7 +281,7 @@ def test_get_credit_history_uses_get_path_and_pagination_only(mock_client_class)
     assert called_url.endswith("/api/manageCredit/token-fake-secret/key-fake-secret/customer-1")
     assert mock_client.get.call_args.kwargs["params"] == {
         "date_ini": "2026-01-01",
-        "date_end": "2026-01-31",
+        "date_end": "2026-01-01",
         "start": 10,
         "limit": 50,
     }
